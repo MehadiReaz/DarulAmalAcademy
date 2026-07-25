@@ -4,10 +4,13 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../providers/base_provider.dart';
 import '../../../providers/class_provider.dart';
-import '../../widgets/class_card.dart';
-import '../../widgets/state_views.dart';
+import '../../../providers/dashboard_provider.dart';
+import '../../../providers/notice_provider.dart';
+import '../../../providers/shell_provider.dart';
+import '../homework/homework_tab.dart';
+import '../payment/pay_fees_screen.dart';
+import '../support/support_tab.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
@@ -20,18 +23,20 @@ class _HomeTabState extends State<HomeTab> {
   @override
   void initState() {
     super.initState();
-    // Kick off loads after the first frame so context.read is safe.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final classes = context.read<ClassProvider>();
-      classes.loadToday();
-      classes.loadCourses();
+      context.read<ClassProvider>().loadToday();
+      context.read<DashboardProvider>().load();
+      // Loads the unread badge on the bell and the bottom Notice tab.
+      context.read<NoticeProvider>().loadNotices();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final dashboard = context.watch<DashboardProvider>();
     final classes = context.watch<ClassProvider>();
+    final notices = context.watch<NoticeProvider>();
     final user = auth.user;
 
     return Scaffold(
@@ -43,7 +48,7 @@ class _HomeTabState extends State<HomeTab> {
           onRefresh: () async {
             await Future.wait([
               classes.loadToday(force: true),
-              classes.loadCourses(force: true),
+              dashboard.load(force: true),
               auth.reloadProfile(),
             ]);
           },
@@ -51,21 +56,27 @@ class _HomeTabState extends State<HomeTab> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 100),
             children: [
-              _Header(name: user?.name, className: user?.className),
-              const SizedBox(height: 20),
-              _MetaChips(
-                rollNo: user?.rollNo,
-                studentId: user?.studentId,
-                courseCount: user?.courses.length ?? 0,
+              _Header(
+                name: user?.name,
+                unreadNotices: notices.unreadCount,
+                onBellTap: () =>
+                    context.read<ShellProvider>().goTo(ShellTab.notices),
               ),
-              const SizedBox(height: 24),
-              const _SectionTitle('Today\'s Classes'),
+              const SizedBox(height: 14),
+              _MetaChips(
+                studentId: user?.studentId,
+                rollNo: user?.rollNo,
+                className: user?.className,
+              ),
+              const SizedBox(height: 20),
+              _LiveClassCard(dashboard: dashboard),
+              const _SectionTitle('Quick Actions'),
               const SizedBox(height: 12),
-              _TodaySection(provider: classes),
-              const SizedBox(height: 24),
-              const _SectionTitle('My Courses'),
-              const SizedBox(height: 12),
-              _CoursesSection(provider: classes),
+              _QuickActionsGrid(
+                pendingHomework: dashboard.quickStats.pendingAssignments,
+              ),
+              const SizedBox(height: 20),
+              const _NamazStrip(),
             ],
           ),
         ),
@@ -74,11 +85,13 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
+// ─────────────────────────────────────────────── Header
 class _Header extends StatelessWidget {
   final String? name;
-  final String? className;
+  final int unreadNotices;
+  final VoidCallback? onBellTap;
 
-  const _Header({this.name, this.className});
+  const _Header({this.name, this.unreadNotices = 0, this.onBellTap});
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +102,9 @@ class _Header extends StatelessWidget {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF254C46), Color(0xFF173832)],
+            ),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Text(
@@ -107,23 +122,57 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Assalamu Alaikum,',
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                name ?? 'Student',
+                'Assalamu Alaikum, ${name ?? 'Student'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 15.5,
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              const SizedBox(height: 2),
+              const Text(
+                "Ready for today's lesson?",
+                style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+              ),
             ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Notification bell. The dot used to be permanently lit; it now
+        // reflects real unread state and the bell jumps to the Notice tab.
+        Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(13),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(13),
+            onTap: onBellTap,
+            child: SizedBox(
+              width: 42,
+              height: 42,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(Icons.notifications_outlined,
+                      size: 20, color: AppColors.cream),
+                  if (unreadNotices > 0)
+                    Positioned(
+                      top: 10,
+                      right: 11,
+                      child: Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: AppColors.gold,
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: AppColors.surface, width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -131,27 +180,30 @@ class _Header extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────── Meta Chips
 class _MetaChips extends StatelessWidget {
-  final String? rollNo;
   final String? studentId;
-  final int courseCount;
+  final String? rollNo;
+  final String? className;
 
-  const _MetaChips({this.rollNo, this.studentId, this.courseCount = 0});
+  const _MetaChips({this.studentId, this.rollNo, this.className});
 
   @override
   Widget build(BuildContext context) {
-    final chips = <Widget>[
-      if (studentId != null) _chip('ID', studentId!),
-      if (rollNo != null) _chip('Roll', rollNo!),
-      _chip('Courses', '$courseCount'),
-    ];
-
-    return Wrap(spacing: 8, runSpacing: 8, children: chips);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (studentId != null) _chip('ID', studentId!),
+        if (rollNo != null) _chip('Roll', rollNo!),
+        if (className != null && className != '—') _chip('Class', className!),
+      ],
+    );
   }
 
   Widget _chip(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.line),
@@ -161,7 +213,11 @@ class _MetaChips extends StatelessWidget {
         TextSpan(children: [
           TextSpan(
             text: '$label ',
-            style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+            style: const TextStyle(
+              color: AppColors.cream,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           TextSpan(
             text: value,
@@ -177,163 +233,132 @@ class _MetaChips extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
+// ─────────────────────────────────────────────── Live Class Card
+class _LiveClassCard extends StatelessWidget {
+  final DashboardProvider dashboard;
+  const _LiveClassCard({required this.dashboard});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-    );
-  }
-}
+    final live = dashboard.liveClass;
+    final next = dashboard.nextClass;
+    final featured = live ?? next;
 
-class _TodaySection extends StatelessWidget {
-  final ClassProvider provider;
-  const _TodaySection({required this.provider});
+    if (featured == null) return const SizedBox(height: 4);
 
-  @override
-  Widget build(BuildContext context) {
-    if (provider.todayState == LoadState.loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 30),
-        child: LoadingView(),
-      );
-    }
+    final isLive = live != null;
 
-    if (provider.todayState == LoadState.error) {
-      return _InlineError(
-        message: provider.todayError ?? 'Could not load classes',
-        onRetry: () => provider.loadToday(force: true),
-      );
-    }
-
-    if (provider.todayClasses.isEmpty) {
-      return _InlineEmpty(
-        icon: Icons.event_available_rounded,
-        title: 'No classes today',
-        subtitle: 'Enjoy your day — check the Classes tab for what\'s next.',
-      );
-    }
-
-    return Column(
-      children: provider.todayClasses
-          .map((r) => ClassCard(routine: r, highlight: true))
-          .toList(),
-    );
-  }
-}
-
-class _CoursesSection extends StatelessWidget {
-  final ClassProvider provider;
-  const _CoursesSection({required this.provider});
-
-  @override
-  Widget build(BuildContext context) {
-    if (provider.coursesState == LoadState.loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: LoadingView(),
-      );
-    }
-
-    if (provider.coursesState == LoadState.error) {
-      return _InlineError(
-        message: provider.coursesError ?? 'Could not load courses',
-        onRetry: () => provider.loadCourses(force: true),
-      );
-    }
-
-    if (provider.courses.isEmpty) {
-      return _InlineEmpty(
-        icon: Icons.school_rounded,
-        title: 'No courses yet',
-        subtitle: 'You have not been enrolled in a course.',
-      );
-    }
-
-    return Column(
-      children: provider.courses.map((c) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.line),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.menu_book_rounded,
-                    color: AppColors.goldLight, size: 21),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.gold, AppColors.goldDeep],
+        ),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Stack(
+        children: [
+          // Decorative circle
+          Positioned(
+            right: -20,
+            top: -20,
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.12),
               ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Status label
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (isLive) ...[
+                      const _PulsingDot(),
+                      const SizedBox(width: 6),
+                    ],
                     Text(
-                      c.name,
+                      isLive ? 'LIVE NOW' : 'UPCOMING',
                       style: const TextStyle(
+                        color: Color(0xFF241700),
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w700,
-                        fontSize: 13.5,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${c.subjects.length} subjects · ${c.totalStudents} students',
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 11.5,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                featured.title,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF241700),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${featured.startTime} – ${featured.endTime}',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF241700).withValues(alpha: 0.85),
+                ),
+              ),
+              if (isLive) ...[
+                const SizedBox(height: 16),
+                Material(
+                  color: const Color(0xFF241700),
+                  borderRadius: BorderRadius.circular(13),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(13),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Opening live class…')),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_arrow_rounded,
+                              size: 16, color: AppColors.goldLight),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Join Live Class',
+                            style: TextStyle(
+                              color: AppColors.goldLight,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _InlineError extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _InlineError({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.line),
-      ),
-      child: Column(
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.muted, fontSize: 12.5),
-          ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: onRetry,
-            child: const Text('Try again',
-                style: TextStyle(color: AppColors.gold)),
           ),
         ],
       ),
@@ -341,39 +366,326 @@ class _InlineError extends StatelessWidget {
   }
 }
 
-class _InlineEmpty extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
+class _PulsingDot extends StatefulWidget {
+  const _PulsingDot();
 
-  const _InlineEmpty({
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(begin: 0.3, end: 1.0).animate(_controller),
+      child: Container(
+        width: 7,
+        height: 7,
+        decoration: const BoxDecoration(
+          color: Color(0xFFC0392B),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Section Title
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Quick Actions Grid
+class _QuickActionsGrid extends StatelessWidget {
+  /// Drives the badge on the Homework tile. Comes from the dashboard's
+  /// `quick_stats.pending_assignments`, so it costs no extra request.
+  final int pendingHomework;
+
+  const _QuickActionsGrid({this.pendingHomework = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    // Every tile below now performs a real action. Five of the six used
+    // to show a snackbar telling the student to tap a tab themselves —
+    // switching tabs is possible from here since the selected index moved
+    // into ShellProvider.
+    void goToTab(int index) => context.read<ShellProvider>().goTo(index);
+
+    void push(Widget screen) => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => screen),
+        );
+
+    return GridView.count(
+      crossAxisCount: 3,
+      mainAxisSpacing: 11,
+      crossAxisSpacing: 11,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      childAspectRatio: 0.92,
+      children: [
+        _ModuleItem(
+          icon: Icons.calendar_month_rounded,
+          label: 'My Class',
+          onTap: () => goToTab(ShellTab.classes),
+        ),
+        _ModuleItem(
+          icon: Icons.assignment_rounded,
+          label: 'Homework',
+          badge: pendingHomework,
+          onTap: () => push(const HomeworkTab()),
+        ),
+        _ModuleItem(
+          icon: Icons.credit_card_rounded,
+          label: 'Pay Fees',
+          onTap: () => push(const PayFeesScreen()),
+        ),
+        _ModuleItem(
+          icon: Icons.campaign_rounded,
+          label: 'Notice',
+          onTap: () => goToTab(ShellTab.notices),
+        ),
+        _ModuleItem(
+          icon: Icons.support_agent_rounded,
+          label: 'Support',
+          onTap: () => push(const SupportTab()),
+        ),
+        _ModuleItem(
+          icon: Icons.menu_book_rounded,
+          label: "Qur'an",
+          onTap: () => goToTab(ShellTab.quran),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModuleItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  /// Shown as a small count bubble when greater than zero.
+  final int badge;
+
+  const _ModuleItem({
     required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.label,
+    required this.onTap,
+    this.badge = 0,
   });
 
   @override
   Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.line),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF24504A), Color(0xFF173731)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(icon, size: 22, color: AppColors.goldLight),
+                  ),
+                  if (badge > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                              color: AppColors.surface, width: 1.5),
+                        ),
+                        child: Text(
+                          badge > 99 ? '99+' : '$badge',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.cream,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Namaz Strip
+class _NamazStrip extends StatelessWidget {
+  const _NamazStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    // Static prayer times — can be replaced with Aladhan API later.
+    const prayers = [
+      _PrayerTime('Fajr', '5:04', '🌅', false),
+      _PrayerTime('Duhr', '12:10', '☀️', false),
+      _PrayerTime('Asr', '4:32', '🌇', true), // "now" slot
+      _PrayerTime('Magrib', '6:45', '🌆', false),
+      _PrayerTime('Isha', '8:05', '🌙', false),
+    ];
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.line),
       ),
       child: Column(
         children: [
-          Icon(icon, color: AppColors.muted, size: 30),
-          const SizedBox(height: 12),
-          Text(title,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 13.5)),
-          const SizedBox(height: 5),
+          Row(
+            children: [
+              const Icon(Icons.schedule_rounded,
+                  size: 14, color: AppColors.gold),
+              const SizedBox(width: 7),
+              const Text(
+                'Namaz Timings',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: prayers.map((p) {
+              return Expanded(
+                child: _NamazItem(prayer: p),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrayerTime {
+  final String name;
+  final String time;
+  final String emoji;
+  final bool isNow;
+  const _PrayerTime(this.name, this.time, this.emoji, this.isNow);
+}
+
+class _NamazItem extends StatelessWidget {
+  final _PrayerTime prayer;
+  const _NamazItem({required this.prayer});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: prayer.isNow
+          ? BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.gold, AppColors.goldDeep],
+              ),
+              borderRadius: BorderRadius.circular(13),
+            )
+          : null,
+      child: Column(
+        children: [
           Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: AppColors.muted, fontSize: 11.5, height: 1.5),
+            prayer.time,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: prayer.isNow
+                  ? const Color(0xFF241700)
+                  : AppColors.muted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(prayer.emoji, style: const TextStyle(fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            prayer.name,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: prayer.isNow
+                  ? const Color(0xFF241700)
+                  : AppColors.cream,
+            ),
           ),
         ],
       ),

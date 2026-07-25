@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'app.dart';
 import 'core/network/api_client.dart';
+import 'core/storage/read_state_storage.dart';
 import 'core/storage/token_storage.dart';
 
 void main() {
@@ -13,9 +14,14 @@ void main() {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Single ApiClient + TokenStorage for the whole app.
+  // Single ApiClient + storage instances for the whole app.
   final client = ApiClient();
   final storage = TokenStorage();
+  final readState = ReadStateStorage();
 
-  runApp(DarulAmalApp(client: client, storage: storage));
+  runApp(DarulAmalApp(
+    client: client,
+    storage: storage,
+    readState: readState,
+  ));
 }

@@ -5,10 +5,13 @@ import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../widgets/app_button.dart';
 
-/// NOTE: the backend accepts name, phone, address, date_of_birth, gender and
-/// blood_group — but `formatUserData()` does NOT return those fields, so we
-/// cannot pre-fill them. Left blank fields are simply not sent.
-/// See README "Backend notes" for the suggested fix.
+/// Edit the fields `PUT /auth/student/profile` accepts: name, phone,
+/// address, date_of_birth, gender and blood_group.
+///
+/// These are now pre-filled. `GET /auth/student/profile` has always
+/// returned them — the app's `StudentUser` model just wasn't reading the
+/// nested payload, so every field came back null and the form opened
+/// blank with a "leave blank to keep unchanged" hint.
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
@@ -19,18 +22,35 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
-  final _phoneController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _dobController = TextEditingController();
+  late final TextEditingController _phoneController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _dobController;
   String? _gender;
+  String? _bloodGroup;
 
   static const _genders = ['male', 'female'];
+  static const _bloodGroups = [
+    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
+  ];
 
   @override
   void initState() {
     super.initState();
     final user = context.read<AuthProvider>().user;
+
     _nameController = TextEditingController(text: user?.name ?? '');
+    _phoneController = TextEditingController(text: user?.phone ?? '');
+    _addressController = TextEditingController(text: user?.address ?? '');
+    _dobController = TextEditingController(text: user?.dateOfBirth ?? '');
+
+    // Only adopt the server value if it is one this form can represent —
+    // otherwise the chip row would show nothing selected and silently
+    // overwrite a valid value on save.
+    final gender = user?.gender?.toLowerCase();
+    if (gender != null && _genders.contains(gender)) _gender = gender;
+
+    final blood = user?.bloodGroup?.toUpperCase().replaceAll(' ', '');
+    if (blood != null && _bloodGroups.contains(blood)) _bloodGroup = blood;
   }
 
   @override
@@ -44,9 +64,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
+
+    // Open on the student's existing date of birth when there is one.
+    DateTime initial = DateTime(now.year - 12);
+    final existing = DateTime.tryParse(_dobController.text.trim());
+    if (existing != null && existing.isBefore(now)) initial = existing;
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(now.year - 12),
+      initialDate: initial,
       firstDate: DateTime(1950),
       lastDate: now,
     );
@@ -68,6 +94,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       address: _addressController.text,
       dateOfBirth: _dobController.text,
       gender: _gender,
+      bloodGroup: _bloodGroup,
     );
 
     if (!mounted) return;
@@ -101,6 +128,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             TextFormField(
               controller: _nameController,
+              textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(labelText: 'Full Name'),
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Name is required' : null,
@@ -109,18 +137,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextFormField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone',
-                hintText: 'Leave blank to keep unchanged',
-              ),
+              decoration: const InputDecoration(labelText: 'Phone'),
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _addressController,
               maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Address',
-                hintText: 'Leave blank to keep unchanged',
                 alignLabelWithHint: true,
               ),
             ),
@@ -137,14 +162,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Gender',
-              style: TextStyle(
-                color: AppColors.muted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            const _FieldLabel('Gender'),
             const SizedBox(height: 8),
             Wrap(
               spacing: 9,
@@ -166,6 +184,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 );
               }).toList(),
             ),
+            const SizedBox(height: 18),
+            const _FieldLabel('Blood Group'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _bloodGroups.map((b) {
+                final selected = _bloodGroup == b;
+                return ChoiceChip(
+                  label: Text(b),
+                  selected: selected,
+                  // Tapping the selected chip clears it, so a student can
+                  // undo a mis-tap without leaving the screen.
+                  onSelected: (_) =>
+                      setState(() => _bloodGroup = selected ? null : b),
+                  backgroundColor: AppColors.surface,
+                  selectedColor: AppColors.gold,
+                  side: const BorderSide(color: AppColors.line),
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color:
+                        selected ? const Color(0xFF231600) : AppColors.muted,
+                  ),
+                );
+              }).toList(),
+            ),
             const SizedBox(height: 28),
             AppButton(
               label: 'Save Changes',
@@ -174,6 +219,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppColors.muted,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
       ),
     );
   }

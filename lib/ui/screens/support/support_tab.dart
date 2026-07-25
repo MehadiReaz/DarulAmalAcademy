@@ -122,8 +122,11 @@ class _TicketTile extends StatelessWidget {
   const _TicketTile({required this.ticket});
 
   Color get _statusColor {
+    // `isResolved` now derives from the `status` column rather than the
+    // `is_resolved` key, which does not exist on the tickets table and so
+    // was always null — meaning nothing ever showed as resolved.
     if (ticket.isResolved) return AppColors.success;
-    if (ticket.repliesCount > 0) return AppColors.goldLight;
+    if (ticket.isAnswered) return AppColors.goldLight;
     return AppColors.muted;
   }
 

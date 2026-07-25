@@ -90,6 +90,7 @@ class TicketProvider extends BaseProvider {
     required String subject,
     required String message,
     String priority = 'medium',
+    String category = 'other',
   }) async {
     _submitting = true;
     _submitError = null;
@@ -100,6 +101,7 @@ class TicketProvider extends BaseProvider {
         subject: subject,
         message: message,
         priority: priority,
+        category: category,
       );
       // Put it at the top of the list without a full refetch.
       _tickets = [ticket, ..._tickets];

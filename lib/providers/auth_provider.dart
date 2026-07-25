@@ -86,9 +86,11 @@ class AuthProvider extends BaseProvider {
     // Revalidate. A 401 here triggers _handleUnauthorized via the interceptor.
     try {
       final fresh = await _repo.profile();
-      _user = fresh;
+      // Merge rather than replace so a field the profile endpoint happens
+      // not to return can never wipe a good cached value.
+      _user = _user == null ? fresh : _user!.mergedWith(fresh);
       _status = AuthStatus.authenticated;
-      await _storage.saveUser(fresh.toJson());
+      await _storage.saveUser(_user!.toJson());
     } on ApiException catch (e) {
       if (e.isUnauthorized) {
         await _clearSession();
@@ -163,8 +165,8 @@ class AuthProvider extends BaseProvider {
   Future<void> reloadProfile() async {
     try {
       final fresh = await _repo.profile();
-      _user = fresh;
-      await _storage.saveUser(fresh.toJson());
+      _user = _user == null ? fresh : _user!.mergedWith(fresh);
+      await _storage.saveUser(_user!.toJson());
       safeNotify();
     } on ApiException catch (_) {
       // Non-fatal: keep showing whatever we already had.
@@ -193,8 +195,14 @@ class AuthProvider extends BaseProvider {
         bloodGroup: bloodGroup,
         photoPath: photoPath,
       );
-      _user = updated;
-      await _storage.saveUser(updated.toJson());
+
+      // The update endpoint answers with the FLAT payload, which carries
+      // no phone / address / gender / date_of_birth and no Qur'an data.
+      // Applying it verbatim would blank fields the student can see, so
+      // merge it over what we already hold instead of replacing.
+      final merged = _user == null ? updated : _user!.mergedWith(updated);
+      _user = merged;
+      await _storage.saveUser(merged.toJson());
       return true;
     } on ApiException catch (e) {
       _error = e.message;

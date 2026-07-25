@@ -7,8 +7,14 @@ import '../models/student_user.dart';
 
 /// Result of POST /auth/send-otp
 class OtpSendResult {
-  /// The server-normalised phone number — use THIS when verifying,
-  /// not the raw text the user typed.
+  /// The phone number echoed back by the server.
+  ///
+  /// NOTE: despite the name this is the RAW string that was sent, not a
+  /// normalised form — `ApiStudentOtpController@send` returns
+  /// `$request->phone` and discards the normalised value that `OtpService`
+  /// produced. Verification normalises again server-side, so either works;
+  /// using this one just keeps client and server talking about the same
+  /// input.
   final String phone;
   final int expiresIn;
   final int cooldown;

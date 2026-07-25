@@ -18,6 +18,17 @@ class ApiEndpoints {
   static const String myCourses = '/student/my-courses';
   static const String classesToday = '/student/classes/today';
   static const String classesUpcoming = '/student/classes/upcoming';
+  static const String dashboard = '/student/dashboard';
+
+  // ---- Notices ----
+  static const String notices = '/student/notices';
+  static String noticeDetail(int id) => '/student/notices/$id';
+  static String noticeRead(int id) => '/student/notices/$id/read';
+
+  // ---- Homework ----
+  static const String homework = '/student/homework';
+  static String homeworkDetail(int id) => '/student/homework/$id';
+  static String homeworkSubmit(int id) => '/student/homework/$id/submit';
 
   // ---- Support tickets ----
   static const String tickets = '/tickets';

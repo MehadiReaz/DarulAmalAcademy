@@ -94,9 +94,36 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                     decoration: const InputDecoration(
                       labelText: 'Mobile Number',
-                      hintText: '01712345678',
-                      prefixIcon: Icon(Icons.phone_rounded,
-                          color: AppColors.muted, size: 20),
+                      hintText: '1XXX XXXXXX',
+                      prefixIcon: Padding(
+                        padding: EdgeInsets.only(left: 16, right: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '+880',
+                              style: TextStyle(
+                                color: AppColors.cream,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            SizedBox(width: 10),
+                            SizedBox(
+                              height: 20,
+                              child: VerticalDivider(
+                                color: AppColors.line,
+                                width: 1,
+                                thickness: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      prefixIconConstraints: BoxConstraints(
+                        minWidth: 0,
+                        minHeight: 0,
+                      ),
                     ),
                     validator: (value) {
                       final v = value?.trim() ?? '';

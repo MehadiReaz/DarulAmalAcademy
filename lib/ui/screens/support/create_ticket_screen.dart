@@ -17,8 +17,22 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
   String _priority = 'medium';
+  String _category = 'other';
 
-  static const _priorities = ['low', 'medium', 'high', 'urgent'];
+  // `SupportTicket::PRIORITIES` on the backend is ['low','medium','high'].
+  // The request validator also permits 'urgent', but the model constant
+  // does not — so 'urgent' is left out rather than offering a value that
+  // may be rejected once the two are reconciled.
+  static const _priorities = ['low', 'medium', 'high'];
+
+  // Mirrors `SupportTicket::CATEGORIES`.
+  static const _categories = <String, String>{
+    'teacher_issue': 'Teacher',
+    'payment_issue': 'Payment',
+    'zoom_issue': 'Class / Zoom',
+    'admission': 'Admission',
+    'other': 'Other',
+  };
 
   @override
   void dispose() {
@@ -36,6 +50,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       subject: _subjectController.text.trim(),
       message: _messageController.text.trim(),
       priority: _priority,
+      category: _category,
     );
 
     if (!mounted) return;
@@ -82,14 +97,33 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                     : null,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Priority',
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+              const _FieldLabel('Category'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: _categories.entries.map((entry) {
+                  final selected = _category == entry.key;
+                  return ChoiceChip(
+                    label: Text(entry.value),
+                    selected: selected,
+                    onSelected: (_) =>
+                        setState(() => _category = entry.key),
+                    backgroundColor: AppColors.surface,
+                    selectedColor: AppColors.gold,
+                    side: const BorderSide(color: AppColors.line),
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: selected
+                          ? const Color(0xFF231600)
+                          : AppColors.muted,
+                    ),
+                  );
+                }).toList(),
               ),
+              const SizedBox(height: 18),
+              const _FieldLabel('Priority'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 9,
@@ -125,6 +159,17 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                     ? 'Please describe the issue'
                     : null,
               ),
+              if (provider.submitError != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  provider.submitError!,
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 11.5,
+                    height: 1.45,
+                  ),
+                ),
+              ],
               const SizedBox(height: 26),
               AppButton(
                 label: 'Submit Ticket',
@@ -134,6 +179,23 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppColors.muted,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
       ),
     );
   }

@@ -79,9 +79,18 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 children: [
                   _pill(ticket.statusLabel,
                       ticket.isResolved ? AppColors.success : AppColors.gold),
-                  if (ticket.priority != null) ...[
+                  if (ticket.priorityLabel != null) ...[
                     const SizedBox(width: 8),
-                    _pill(ticket.priority!, AppColors.muted),
+                    _pill(
+                      ticket.priorityLabel!,
+                      ticket.isHighPriority
+                          ? AppColors.danger
+                          : AppColors.muted,
+                    ),
+                  ],
+                  if (ticket.ticketNo != null) ...[
+                    const SizedBox(width: 8),
+                    _pill(ticket.ticketNo!, AppColors.muted),
                   ],
                   const Spacer(),
                   Text(

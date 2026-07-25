@@ -2,13 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/network/api_client.dart';
+import 'core/storage/read_state_storage.dart';
 import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/class_repository.dart';
+import 'data/repositories/dashboard_repository.dart';
+import 'data/repositories/homework_repository.dart';
+import 'data/repositories/notice_repository.dart';
 import 'data/repositories/ticket_repository.dart';
 import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
+import 'providers/dashboard_provider.dart';
+import 'providers/homework_provider.dart';
+import 'providers/notice_provider.dart';
+import 'providers/shell_provider.dart';
 import 'providers/ticket_provider.dart';
 import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/main_shell.dart';
@@ -17,11 +25,13 @@ import 'ui/screens/splash_screen.dart';
 class DarulAmalApp extends StatelessWidget {
   final ApiClient client;
   final TokenStorage storage;
+  final ReadStateStorage readState;
 
   const DarulAmalApp({
     super.key,
     required this.client,
     required this.storage,
+    required this.readState,
   });
 
   @override
@@ -40,8 +50,19 @@ class DarulAmalApp extends StatelessWidget {
           create: (_) => ClassProvider(ClassRepository(client)),
         ),
         ChangeNotifierProvider(
+          create: (_) => DashboardProvider(DashboardRepository(client)),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => NoticeProvider(NoticeRepository(client), readState),
+        ),
+        ChangeNotifierProvider(
           create: (_) => TicketProvider(TicketRepository(client)),
         ),
+        ChangeNotifierProvider(
+          create: (_) => HomeworkProvider(HomeworkRepository(client)),
+        ),
+        // Owns the selected bottom-nav tab so nested screens can navigate.
+        ChangeNotifierProvider(create: (_) => ShellProvider()),
       ],
       child: MaterialApp(
         title: 'Darul Amal Academy',

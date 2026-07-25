@@ -20,16 +20,25 @@ class TicketRepository {
     );
   }
 
-  /// POST /tickets  { subject, message, priority? }  ->  { ticket }
+  /// POST /tickets  { subject, message, priority?, category? }  ->  { ticket }
+  ///
+  /// `category` is sent even though `SupportTicketController@store` does
+  /// not read it yet. The `support_tickets.category` column is NOT NULL
+  /// with no default, so ticket creation currently fails server-side;
+  /// sending the value here means the app needs no change once `store()`
+  /// starts persisting it. Laravel ignores unvalidated keys, so it is
+  /// harmless in the meantime.
   Future<SupportTicket> create({
     required String subject,
     required String message,
     String priority = 'medium',
+    String category = 'other',
   }) async {
     final data = await _client.post(ApiEndpoints.tickets, body: {
       'subject': subject,
       'message': message,
       'priority': priority,
+      'category': category,
     });
 
     final map = asMap(data) ?? {};
@@ -54,8 +63,9 @@ class TicketRepository {
 
   /// POST /tickets/{id}/reply
   ///
-  /// NOTE: the backend currently restricts replies to Admin users only, so
-  /// this returns 403 for a student. Kept here for when that opens up.
+  /// NOTE: `SupportTicketController@reply` restricts replies to Admin
+  /// users, so this returns 403 for a student. Kept here, and deliberately
+  /// not surfaced in the UI, for when that opens up.
   Future<TicketReply> reply({required int id, required String message}) async {
     final data = await _client.post(
       ApiEndpoints.ticketReply(id),

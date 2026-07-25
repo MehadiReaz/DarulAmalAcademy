@@ -5,7 +5,14 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/class_provider.dart';
+import '../../../providers/dashboard_provider.dart';
+import '../../../providers/homework_provider.dart';
+import '../../../providers/notice_provider.dart';
+import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
+import '../homework/homework_tab.dart';
+import '../payment/pay_fees_screen.dart';
+import '../support/support_tab.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -40,9 +47,14 @@ class ProfileTab extends StatelessWidget {
 
     if (confirmed != true || !context.mounted) return;
 
-    // Clear feature state so the next student starts clean.
+    // Clear feature state so the next student starts clean. Missing one
+    // here leaks the previous student's data into the next session.
     context.read<ClassProvider>().reset();
     context.read<TicketProvider>().reset();
+    context.read<DashboardProvider>().reset();
+    context.read<NoticeProvider>().reset();
+    context.read<HomeworkProvider>().reset();
+    context.read<ShellProvider>().reset();
     await context.read<AuthProvider>().logout();
   }
 
@@ -109,6 +121,14 @@ class ProfileTab extends StatelessWidget {
           _infoRow(Icons.tag_rounded, 'Roll No', user?.rollNo ?? 'Not set'),
           _infoRow(Icons.class_outlined, 'Class', user?.className ?? '—'),
           _infoRow(Icons.email_outlined, 'Email', user?.email ?? 'Not set'),
+          _infoRow(Icons.phone_outlined, 'Phone', user?.phone ?? 'Not set'),
+          if (user?.address != null)
+            _infoRow(Icons.home_outlined, 'Address', user!.address!),
+          if (user?.bloodGroup != null)
+            _infoRow(Icons.bloodtype_outlined, 'Blood Group',
+                user!.bloodGroup!),
+          if (user?.session != null)
+            _infoRow(Icons.event_note_outlined, 'Session', user!.session!),
           const SizedBox(height: 18),
           _actionRow(
             context,
@@ -132,6 +152,35 @@ class ProfileTab extends StatelessWidget {
                 );
               }
             },
+          ),
+          _actionRow(
+            context,
+            icon: Icons.assignment_rounded,
+            title: 'Homework',
+            subtitle: 'View and submit your assignments',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeworkTab()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.credit_card_rounded,
+            title: 'Pay Fees',
+            subtitle: 'View and pay your dues',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PayFeesScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.support_agent_rounded,
+            title: 'Support',
+            subtitle: 'Submit a support ticket',
+            // SupportTab builds its own Scaffold; the extra wrapper here
+            // used to nest two, which broke its FAB placement.
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SupportTab()),
+            ),
           ),
           _actionRow(
             context,

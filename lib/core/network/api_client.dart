@@ -26,8 +26,9 @@ class ApiClient {
         baseUrl: AppConfig.baseUrl,
         connectTimeout: AppConfig.connectTimeout,
         receiveTimeout: AppConfig.receiveTimeout,
-        headers: {'Accept': 'application/json',
-          'Content-Type': 'application/json'
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
         // We handle all non-2xx ourselves in _toApiException.
         validateStatus: (status) => status != null && status < 400,
@@ -47,7 +48,9 @@ class ApiClient {
         },
         onResponse: (response, handler) {
           if (AppConfig.enableLogging) {
-            logger.i('[API] ← ${response.statusCode} ${response.requestOptions.uri}');
+            logger.i(
+              '[API] ← ${response.statusCode} ${response.requestOptions.uri}',
+            );
           }
           handler.next(response);
         },
@@ -76,6 +79,7 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     try {
       final res = await _dio.get(path, queryParameters: query);
+      logger.i('[API] Response: ${res.data}');
       return _unwrap(res.data);
     } on DioException catch (e) {
       throw _toApiException(e);
@@ -97,6 +101,7 @@ class ApiClient {
   Future<dynamic> put(String path, {Object? body}) async {
     try {
       final res = await _dio.put(path, data: body);
+      logger.i('[API] Response: ${res.data}');
       return _unwrap(res.data);
     } on DioException catch (e) {
       throw _toApiException(e);
@@ -106,6 +111,7 @@ class ApiClient {
   Future<dynamic> delete(String path, {Object? body}) async {
     try {
       final res = await _dio.delete(path, data: body);
+      logger.i('[API] Response: ${res.data}');
       return _unwrap(res.data);
     } on DioException catch (e) {
       throw _toApiException(e);
@@ -113,11 +119,21 @@ class ApiClient {
   }
 
   /// Multipart upload. Laravel cannot read multipart on a real PUT request,
-  /// so we POST with `_method: PUT` — Laravel's method spoofing routes it to
-  /// the PUT route correctly.
+  /// so callers POST with `_method: PUT` — Laravel's method spoofing routes
+  /// it to the PUT route correctly.
+  ///
+  /// The content type is set explicitly: BaseOptions declares
+  /// `application/json` for every other verb, and relying on Dio to notice
+  /// the FormData and override it leaves the boundary parameter up to
+  /// chance. Stating it here means PHP always populates `$_FILES`.
   Future<dynamic> postMultipart(String path, FormData form) async {
     try {
-      final res = await _dio.post(path, data: form);
+      final res = await _dio.post(
+        path,
+        data: form,
+        options: Options(contentType: Headers.multipartFormDataContentType),
+      );
+      logger.i('[API] Response: ${res.data}');
       return _unwrap(res.data);
     } on DioException catch (e) {
       throw _toApiException(e);
@@ -143,7 +159,8 @@ class ApiClient {
         e.type == DioExceptionType.sendTimeout ||
         e.type == DioExceptionType.connectionError) {
       return const ApiException(
-        message: 'Cannot reach the server. Please check your internet connection.',
+        message:
+            'Cannot reach the server. Please check your internet connection.',
         isNetworkError: true,
       );
     }
@@ -160,8 +177,9 @@ class ApiClient {
       if (errors is Map) {
         errors.forEach((key, value) {
           if (value is List) {
-            fieldErrors[key.toString()] =
-                value.map((v) => v.toString()).toList();
+            fieldErrors[key.toString()] = value
+                .map((v) => v.toString())
+                .toList();
           } else if (value != null) {
             fieldErrors[key.toString()] = [value.toString()];
           }
