@@ -17,6 +17,9 @@ class AppColors {
   static const Color cream = Color(0xFFF4EFE2);
   static const Color muted = Color(0xFF8CA6A0);
 
+  static const Color navAccent = Color(0xFFEFA836);
+  static const Color navInactive = Color(0xFF8CA6A0);
+
   static const Color success = Color(0xFF4FB286);
   static const Color danger = Color(0xFFE07A6B);
 

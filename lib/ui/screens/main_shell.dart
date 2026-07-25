@@ -37,86 +37,159 @@ class MainShell extends StatelessWidget {
 
     return Scaffold(
       body: IndexedStack(index: index, children: _tabs),
-      bottomNavigationBar: Container(
+      bottomNavigationBar: _CaretNavBar(
+        index: index,
+        unread: unread,
+        onTap: (i) => context.read<ShellProvider>().goTo(i),
+      ),
+    );
+  }
+}
+
+/// Floating icon-only nav bar with a caret that slides to the active tab.
+///
+/// This replaces Material 3's [NavigationBar]. The stock widget centres its
+/// destinations vertically and only supports a pill-shaped indicator behind
+/// the icon, so there's no supported way to pin a caret to the top edge —
+/// hence the hand-rolled Row.
+///
+/// Note that [NavigationBar] also grew its own height by
+/// `MediaQuery.viewPaddingOf(context).bottom` for free. That's gone now, so
+/// the [SafeArea] below is doing that job instead — without it the bar
+/// collides with the home indicator on gesture-nav devices.
+class _CaretNavBar extends StatelessWidget {
+  const _CaretNavBar({
+    required this.index,
+    required this.unread,
+    required this.onTap,
+  });
+
+  final int index;
+  final int unread;
+  final ValueChanged<int> onTap;
+
+  /// The mockup keeps the active icon in its outline weight and only
+  /// re-tints it, so there are no filled `selectedIcon` variants here.
+  static const _icons = [
+    Icons.home_outlined,
+    Icons.calendar_month_outlined,
+    Icons.menu_book_outlined,
+    Icons.campaign_outlined,
+    Icons.person_outline_rounded,
+  ];
+
+  /// Labels are no longer painted — the mockup is icon-only — but they're
+  /// still read out by TalkBack/VoiceOver via [Semantics].
+  static const _labels = ['Home', 'Classes', "Qur'an", 'Notice', 'Profile'];
+
+  static const _noticeIndex = 3;
+
+  static const _barHeight = 64.0;
+  static const _caretWidth = 12.0;
+  static const _caretHeight = 6.0;
+  static const _radius = 28.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
         margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(_radius),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 30,
-              offset: const Offset(0, 14),
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: NavigationBarTheme(
-            data: NavigationBarThemeData(
-              backgroundColor: Colors.white,
-              indicatorColor: AppColors.goldLight.withValues(alpha: 0.28),
-              labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                final selected = states.contains(WidgetState.selected);
-                return TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? AppColors.goldDeep : const Color(0xFF9AA8A5),
+        child: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            height: _barHeight,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final slot = constraints.maxWidth / _icons.length;
+                return Stack(
+                  children: [
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      top: 0,
+                      left: slot * index + (slot - _caretWidth) / 2,
+                      child: const CustomPaint(
+                        size: Size(_caretWidth, _caretHeight),
+                        painter: _CaretPainter(AppColors.navAccent),
+                      ),
+                    ),
+                    Row(
+                      children: List.generate(_icons.length, (i) {
+                        final selected = i == index;
+                        final icon = Icon(
+                          _icons[i],
+                          size: 24,
+                          color: selected
+                              ? AppColors.navAccent
+                              : AppColors.navInactive,
+                        );
+                        return Expanded(
+                          child: Semantics(
+                            label: _labels[i],
+                            button: true,
+                            selected: selected,
+                            child: InkResponse(
+                              onTap: () => onTap(i),
+                              radius: _barHeight / 2,
+                              child: Center(
+                                child: i == _noticeIndex
+                                    ? Badge(
+                                        // Unread state is tracked locally —
+                                        // the backend always reports
+                                        // `is_read: false`. See
+                                        // ReadStateStorage.
+                                        isLabelVisible: unread > 0,
+                                        label: Text('$unread'),
+                                        backgroundColor: AppColors.danger,
+                                        child: icon,
+                                      )
+                                    : icon,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
                 );
-              }),
-              iconTheme: WidgetStateProperty.resolveWith((states) {
-                final selected = states.contains(WidgetState.selected);
-                return IconThemeData(
-                  size: 22,
-                  color: selected ? AppColors.goldDeep : const Color(0xFF9AA8A5),
-                );
-              }),
-            ),
-            child: NavigationBar(
-              height: 66,
-              selectedIndex: index,
-              onDestinationSelected: (i) =>
-                  context.read<ShellProvider>().goTo(i),
-              labelBehavior:
-                  NavigationDestinationLabelBehavior.onlyShowSelected,
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home_rounded),
-                  label: 'Home',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.calendar_month_outlined),
-                  selectedIcon: Icon(Icons.calendar_month_rounded),
-                  label: 'Classes',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.menu_book_outlined),
-                  selectedIcon: Icon(Icons.menu_book_rounded),
-                  label: "Qur'an",
-                ),
-                NavigationDestination(
-                  // Unread state is tracked locally — the backend always
-                  // reports `is_read: false`. See ReadStateStorage.
-                  icon: Badge(
-                    isLabelVisible: unread > 0,
-                    label: Text('$unread'),
-                    backgroundColor: AppColors.danger,
-                    child: const Icon(Icons.campaign_outlined),
-                  ),
-                  selectedIcon: const Icon(Icons.campaign_rounded),
-                  label: 'Notice',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.person_outline_rounded),
-                  selectedIcon: Icon(Icons.person_rounded),
-                  label: 'Profile',
-                ),
-              ],
+              },
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Downward-pointing triangle pinned to the top edge of the bar.
+class _CaretPainter extends CustomPainter {
+  const _CaretPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_CaretPainter oldDelegate) => oldDelegate.color != color;
 }
