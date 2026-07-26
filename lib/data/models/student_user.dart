@@ -171,18 +171,39 @@ class StudentUser {
 }
 
 /// Reusable { id, name } shape used all over the API.
+///
+/// Several endpoints (teachers on attendance records, recording authors,
+/// chat senders, ticket users) return the same object with an avatar
+/// attached, so [photoUrl] is read opportunistically — it stays null for
+/// the plain `{id, name}` case.
 class NamedRef {
   final int? id;
   final String? name;
+  final String? photoUrl;
 
-  const NamedRef({this.id, this.name});
+  const NamedRef({this.id, this.name, this.photoUrl});
 
   factory NamedRef.fromJson(Map<String, dynamic> json) => NamedRef(
         id: asIntOrNull(json['id']),
         name: asStringOrNull(json['name']),
+        photoUrl: asStringOrNull(json['profile_photo_url']) ??
+            asStringOrNull(json['image']),
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (photoUrl != null) 'profile_photo_url': photoUrl,
+      };
 
   String get display => name ?? '—';
+
+  /// First letters of the first two words, for avatar fallbacks.
+  String get initials {
+    final parts = (name ?? '').trim().split(RegExp(r'\s+'))
+      ..removeWhere((p) => p.isEmpty);
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
 }

@@ -1,3 +1,4 @@
+import '../core/network/api_exception.dart';
 import '../data/models/class_routine.dart';
 import '../data/models/enrolled_course.dart';
 import '../data/repositories/class_repository.dart';
@@ -22,6 +23,10 @@ class ClassProvider extends BaseProvider {
   LoadState _coursesState = LoadState.idle;
   String? _coursesError;
 
+  ClassRoutineBundle? _routine;
+  LoadState _routineState = LoadState.idle;
+  String? _routineError;
+
   List<ClassRoutine> get todayClasses => _today;
   LoadState get todayState => _todayState;
   String? get todayError => _todayError;
@@ -34,7 +39,20 @@ class ClassProvider extends BaseProvider {
   LoadState get coursesState => _coursesState;
   String? get coursesError => _coursesError;
 
+  ClassRoutineBundle? get routine => _routine;
+  LoadState get routineState => _routineState;
+  String? get routineError => _routineError;
+
   bool get hasClassToday => _today.isNotEmpty;
+
+  /// True when today/upcoming failed but the routine endpoint works.
+  ///
+  /// `/student/classes/today` and `/upcoming` return 403 for enrolled
+  /// students because of a server-side authorisation fault. The Classes
+  /// tab uses this to fall back to the weekly routine instead of showing
+  /// an error the student can do nothing about.
+  bool get liveEndpointsBlocked =>
+      _todayState == LoadState.error && _upcomingState == LoadState.error;
 
   Future<void> loadToday({bool force = false}) async {
     if (_todayState == LoadState.loading) return;
@@ -71,7 +89,7 @@ class ClassProvider extends BaseProvider {
     if (_coursesState == LoadState.ready && !force) return;
 
     final result = await guard(
-      () => _repo.myCourses(),
+      () => _repo.myClasses(),
       onState: (state, err) {
         _coursesState = state;
         _coursesError = err;
@@ -81,12 +99,38 @@ class ClassProvider extends BaseProvider {
     safeNotify();
   }
 
+  Future<void> loadRoutine({bool force = false}) async {
+    if (_routineState == LoadState.loading) return;
+    if (_routineState == LoadState.ready && !force) return;
+
+    final result = await guard(
+      () => _repo.routine(),
+      onState: (state, err) {
+        _routineState = state;
+        _routineError = err;
+      },
+    );
+    if (result != null) _routine = result;
+    safeNotify();
+  }
+
+  /// Fetches the meeting link for a class. Returns null (and sets no
+  /// error state) when the server refuses — the caller surfaces it.
+  Future<ClassJoinInfo?> joinInfo(int classId) async {
+    try {
+      return await _repo.join(classId);
+    } on ApiException catch (_) {
+      return null;
+    }
+  }
+
   /// Pull-to-refresh on the home screen.
   Future<void> refreshAll() async {
     await Future.wait([
       loadToday(force: true),
       loadUpcoming(force: true),
       loadCourses(force: true),
+      loadRoutine(force: true),
     ]);
   }
 
@@ -95,9 +139,12 @@ class ClassProvider extends BaseProvider {
     _today = [];
     _upcoming = [];
     _courses = [];
+    _routine = null;
     _todayState = LoadState.idle;
     _upcomingState = LoadState.idle;
     _coursesState = LoadState.idle;
+    _routineState = LoadState.idle;
+    _routineError = null;
     _todayError = null;
     _upcomingError = null;
     _coursesError = null;

@@ -5,36 +5,73 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/quran_progress.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/base_provider.dart';
+import '../../../providers/quran_provider.dart';
 import '../../widgets/state_views.dart';
 
-/// Qur'an progress, driven by the `quran_progress` and
-/// `quran_progress_logs` blocks on `GET /auth/student/profile`.
+/// Qur'an progress, driven by `GET /student/quran-progress`.
 ///
-/// This screen used to render three hardcoded cards. The data was
-/// already on the wire — `StudentUser` simply wasn't parsing it.
-class QuranTab extends StatelessWidget {
+/// That dedicated endpoint supersedes the `quran_progress` block on the
+/// profile payload: it paginates the teacher's notes and ships the
+/// curriculum reference data (114 surahs, bilingual focus labels, lesson
+/// and para totals), so progress renders against the madrasah's own
+/// denominators instead of hardcoded ones.
+///
+/// The profile block is still used as a fallback — it is the same data,
+/// and it means the screen has something to show if the dedicated call
+/// fails.
+class QuranTab extends StatefulWidget {
   const QuranTab({super.key});
+
+  @override
+  State<QuranTab> createState() => _QuranTabState();
+}
+
+class _QuranTabState extends State<QuranTab> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<QuranProvider>().load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final quran = context.watch<QuranProvider>();
     final user = auth.user;
-    final progress = user?.quranProgress;
-    final logs = user?.quranProgressLogs ?? const <QuranProgressLog>[];
+
+    final progress = quran.progress ?? user?.quranProgress;
+    final logs = quran.logs.isNotEmpty
+        ? quran.logs
+        : (user?.quranProgressLogs ?? const <QuranProgressLog>[]);
+
+    if (quran.state == LoadState.loading && progress == null && logs.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Qur'an Progress")),
+        body: const LoadingView(),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text("Qur'an Progress")),
       body: RefreshIndicator(
         color: AppColors.gold,
         backgroundColor: AppColors.surface,
-        onRefresh: () => auth.reloadProfile(),
+        onRefresh: () async {
+          await Future.wait([
+            quran.load(force: true),
+            auth.reloadProfile(),
+          ]);
+        },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 100),
           children: [
             _BismillahHeader(
               name: user?.name,
-              focusLabel: progress?.readingFocusLabel,
+              focusLabel: quran.focusLabel ?? progress?.readingFocusLabel,
             ),
             const SizedBox(height: 20),
 
@@ -45,24 +82,27 @@ class QuranTab extends StatelessWidget {
                 title: 'Noorani Qaida',
                 progress: progress.nooraniFraction,
                 displayValue: _percentLabel(progress.nooraniQaidaPercentage),
-                detail: progress.nooraniQaidaLesson != null
-                    ? 'Lesson ${progress.nooraniQaidaLesson}'
-                    : null,
+                // Lesson total comes from reference_data, not a constant.
+                detail: quran.lessonLabel.isNotEmpty
+                    ? quran.lessonLabel
+                    : (progress.nooraniQaidaLesson != null
+                        ? 'Lesson ${progress.nooraniQaidaLesson}'
+                        : null),
               ),
               _ProgressCard(
                 title: "Qur'an Majeed",
                 progress: progress.paraFraction,
                 displayValue: _percentLabel(progress.paraPercentage),
-                detail: progress.parasCompleted > 0
-                    ? '${progress.parasCompleted} of 30 para complete'
-                    : null,
+                detail: progress.parasCompleted > 0 ? quran.paraLabel : null,
               ),
               _ProgressCard(
                 title: 'Surah Memorization',
                 progress: progress.surahFraction,
                 displayValue: _percentLabel(progress.surahPercentage),
                 detail: progress.surahsCompleted > 0
-                    ? '${progress.surahsCompleted} surah memorized'
+                    ? '${progress.surahsCompleted} of '
+                        '${quran.reference.surahs.isEmpty ? 114 : quran.reference.surahs.length} '
+                        'surah memorized'
                     : null,
               ),
               if (progress.assignedTeacher?.name != null) ...[

@@ -8,8 +8,11 @@ import '../../../providers/class_provider.dart';
 import '../../../providers/dashboard_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../../providers/shell_provider.dart';
+import '../attendance/attendance_screen.dart';
+import '../chat/chat_list_screen.dart';
 import '../homework/homework_tab.dart';
 import '../payment/pay_fees_screen.dart';
+import '../recordings/recordings_screen.dart';
 import '../support/support_tab.dart';
 
 class HomeTab extends StatefulWidget {
@@ -59,14 +62,15 @@ class _HomeTabState extends State<HomeTab> {
               _Header(
                 name: user?.name,
                 unreadNotices: notices.unreadCount,
+                profileImage: user!.profilePhotoUrl!,
                 onBellTap: () =>
                     context.read<ShellProvider>().goTo(ShellTab.notices),
               ),
               const SizedBox(height: 14),
               _MetaChips(
-                studentId: user?.studentId,
-                rollNo: user?.rollNo,
-                className: user?.className,
+                studentId: user.studentId,
+                rollNo: user.rollNo,
+                className: user.className,
               ),
               const SizedBox(height: 20),
               _LiveClassCard(dashboard: dashboard),
@@ -75,8 +79,6 @@ class _HomeTabState extends State<HomeTab> {
               _QuickActionsGrid(
                 pendingHomework: dashboard.quickStats.pendingAssignments,
               ),
-              const SizedBox(height: 20),
-              const _NamazStrip(),
             ],
           ),
         ),
@@ -90,43 +92,88 @@ class _Header extends StatelessWidget {
   final String? name;
   final int unreadNotices;
   final VoidCallback? onBellTap;
+  final String? profileImage;
 
-  const _Header({this.name, this.unreadNotices = 0, this.onBellTap});
+  const _Header({
+    this.name,
+    this.unreadNotices = 0,
+    this.onBellTap,
+    this.profileImage,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 46,
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF254C46), Color(0xFF173832)],
-            ),
-            borderRadius: BorderRadius.circular(15),
+        if (profileImage?.isNotEmpty ?? false) ...[
+          Image.network(
+            profileImage!,
+            width: 46,
+            height: 46,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF254C46), Color(0xFF173832)],
+                  ),
+                  borderRadius: BorderRadius.all(Radius.circular(15)),
+                ),
+                child: Text(
+                  Fmt.initials(name),
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              );
+            },
           ),
-          child: Text(
-            Fmt.initials(name),
-            style: const TextStyle(
-              color: AppColors.gold,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
+        ] else ...[
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF254C46), Color(0xFF173832)],
+              ),
+              borderRadius: BorderRadius.all(Radius.circular(15)),
+            ),
+            child: Text(
+              Fmt.initials(name),
+              style: const TextStyle(
+                color: AppColors.gold,
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
             ),
           ),
-        ),
+        ],
+
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Assalamu Alaikum, ${name ?? 'Student'}',
+                'Assalamu Alaikum',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 15.5,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                name ?? 'Student',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18.5,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -153,8 +200,11 @@ class _Header extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  const Icon(Icons.notifications_outlined,
-                      size: 20, color: AppColors.cream),
+                  const Icon(
+                    Icons.notifications_outlined,
+                    size: 20,
+                    color: AppColors.cream,
+                  ),
                   if (unreadNotices > 0)
                     Positioned(
                       top: 10,
@@ -165,8 +215,10 @@ class _Header extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: AppColors.gold,
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: AppColors.surface, width: 1.5),
+                          border: Border.all(
+                            color: AppColors.surface,
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -210,24 +262,26 @@ class _MetaChips extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text.rich(
-        TextSpan(children: [
-          TextSpan(
-            text: '$label ',
-            style: const TextStyle(
-              color: AppColors.cream,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w600,
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$label ',
+              style: const TextStyle(
+                color: AppColors.cream,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          TextSpan(
-            text: value,
-            style: const TextStyle(
-              color: AppColors.gold,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
+            TextSpan(
+              text: value,
+              style: const TextStyle(
+                color: AppColors.gold,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -279,8 +333,10 @@ class _LiveClassCard extends StatelessWidget {
             children: [
               // Status label
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(20),
@@ -331,18 +387,22 @@ class _LiveClassCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(13),
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Opening live class…')),
+                        const SnackBar(content: Text('Opening live class…')),
                       );
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.play_arrow_rounded,
-                              size: 16, color: AppColors.goldLight),
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            size: 16,
+                            color: AppColors.goldLight,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Join Live Class',
@@ -441,9 +501,8 @@ class _QuickActionsGrid extends StatelessWidget {
     // into ShellProvider.
     void goToTab(int index) => context.read<ShellProvider>().goTo(index);
 
-    void push(Widget screen) => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => screen),
-        );
+    void push(Widget screen) =>
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
     return GridView.count(
       crossAxisCount: 3,
@@ -451,7 +510,7 @@ class _QuickActionsGrid extends StatelessWidget {
       crossAxisSpacing: 11,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.92,
+      childAspectRatio: 0.86,
       children: [
         _ModuleItem(
           icon: Icons.calendar_month_rounded,
@@ -466,7 +525,7 @@ class _QuickActionsGrid extends StatelessWidget {
         ),
         _ModuleItem(
           icon: Icons.credit_card_rounded,
-          label: 'Pay Fees',
+          label: 'Fees',
           onTap: () => push(const PayFeesScreen()),
         ),
         _ModuleItem(
@@ -475,14 +534,29 @@ class _QuickActionsGrid extends StatelessWidget {
           onTap: () => goToTab(ShellTab.notices),
         ),
         _ModuleItem(
-          icon: Icons.support_agent_rounded,
-          label: 'Support',
-          onTap: () => push(const SupportTab()),
-        ),
-        _ModuleItem(
           icon: Icons.menu_book_rounded,
           label: "Qur'an",
           onTap: () => goToTab(ShellTab.quran),
+        ),
+        _ModuleItem(
+          icon: Icons.play_circle_outline_rounded,
+          label: 'Recordings',
+          onTap: () => push(const RecordingsScreen()),
+        ),
+        _ModuleItem(
+          icon: Icons.fact_check_outlined,
+          label: 'Attendance',
+          onTap: () => push(const AttendanceScreen()),
+        ),
+        _ModuleItem(
+          icon: Icons.forum_outlined,
+          label: 'Group Chat',
+          onTap: () => push(const ChatListScreen()),
+        ),
+        _ModuleItem(
+          icon: Icons.support_agent_rounded,
+          label: 'Support',
+          onTap: () => push(const SupportTab()),
         ),
       ],
     );
@@ -543,13 +617,17 @@ class _ModuleItem extends StatelessWidget {
                       right: -4,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 2),
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
                         constraints: const BoxConstraints(minWidth: 18),
                         decoration: BoxDecoration(
                           color: AppColors.danger,
                           borderRadius: BorderRadius.circular(9),
                           border: Border.all(
-                              color: AppColors.surface, width: 1.5),
+                            color: AppColors.surface,
+                            width: 1.5,
+                          ),
                         ),
                         child: Text(
                           badge > 99 ? '99+' : '$badge',
@@ -579,115 +657,6 @@ class _ModuleItem extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────── Namaz Strip
-class _NamazStrip extends StatelessWidget {
-  const _NamazStrip();
-
-  @override
-  Widget build(BuildContext context) {
-    // Static prayer times — can be replaced with Aladhan API later.
-    const prayers = [
-      _PrayerTime('Fajr', '5:04', '🌅', false),
-      _PrayerTime('Duhr', '12:10', '☀️', false),
-      _PrayerTime('Asr', '4:32', '🌇', true), // "now" slot
-      _PrayerTime('Magrib', '6:45', '🌆', false),
-      _PrayerTime('Isha', '8:05', '🌙', false),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.line),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.schedule_rounded,
-                  size: 14, color: AppColors.gold),
-              const SizedBox(width: 7),
-              const Text(
-                'Namaz Timings',
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: prayers.map((p) {
-              return Expanded(
-                child: _NamazItem(prayer: p),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PrayerTime {
-  final String name;
-  final String time;
-  final String emoji;
-  final bool isNow;
-  const _PrayerTime(this.name, this.time, this.emoji, this.isNow);
-}
-
-class _NamazItem extends StatelessWidget {
-  final _PrayerTime prayer;
-  const _NamazItem({required this.prayer});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: prayer.isNow
-          ? BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.gold, AppColors.goldDeep],
-              ),
-              borderRadius: BorderRadius.circular(13),
-            )
-          : null,
-      child: Column(
-        children: [
-          Text(
-            prayer.time,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: prayer.isNow
-                  ? const Color(0xFF241700)
-                  : AppColors.muted,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(prayer.emoji, style: const TextStyle(fontSize: 16)),
-          const SizedBox(height: 4),
-          Text(
-            prayer.name,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: prayer.isNow
-                  ? const Color(0xFF241700)
-                  : AppColors.cream,
-            ),
-          ),
-        ],
       ),
     );
   }

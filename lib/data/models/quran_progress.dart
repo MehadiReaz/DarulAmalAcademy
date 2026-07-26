@@ -1,4 +1,5 @@
 import '../../core/utils/json_utils.dart';
+import 'pagination.dart';
 import 'student_user.dart';
 
 /// Matches the `quran_progress` block returned by
@@ -132,4 +133,113 @@ class QuranProgressLog {
       };
 
   DateTime? get loggedAt => asDate(loggedOn);
+}
+
+/// One of the 114 surahs, from `reference_data.surahs`.
+class SurahRef {
+  final int number;
+  final String nameAr;
+  final String nameEn;
+
+  const SurahRef({
+    required this.number,
+    this.nameAr = '',
+    this.nameEn = '',
+  });
+
+  factory SurahRef.fromJson(Map<String, dynamic> json) => SurahRef(
+        number: asInt(json['number']),
+        nameAr: asString(json['name_ar']),
+        nameEn: asString(json['name_en']),
+      );
+
+  String get display => nameEn.isEmpty ? nameAr : nameEn;
+}
+
+/// The `reference_data` block on `GET /student/quran-progress` — the
+/// curriculum's fixed denominators and label lookups.
+///
+/// Reading totals from here rather than hardcoding 30 paras / 27 lessons
+/// means the app follows the madrasah's own configuration.
+class QuranReferenceData {
+  final List<SurahRef> surahs;
+
+  /// Machine key → display label, e.g. `pronunciation` →
+  /// "Pronunciation (উচ্চারণ)".
+  final Map<String, String> readingFocus;
+
+  final int totalLessons;
+  final int totalParas;
+  final int tajweedScale;
+
+  const QuranReferenceData({
+    this.surahs = const [],
+    this.readingFocus = const {},
+    this.totalLessons = 27,
+    this.totalParas = 30,
+    this.tajweedScale = 5,
+  });
+
+  factory QuranReferenceData.fromJson(Map<String, dynamic> json) {
+    final focusRaw = asMap(json['reading_focus']) ?? const {};
+    return QuranReferenceData(
+      surahs: asList(json['surahs'], SurahRef.fromJson),
+      readingFocus: focusRaw.map(
+        (k, v) => MapEntry(k.toString(), v?.toString() ?? k.toString()),
+      ),
+      totalLessons: asInt(json['total_lessons'], fallback: 27),
+      totalParas: asInt(json['total_paras'], fallback: 30),
+      tajweedScale: asInt(json['tajweed_scale'], fallback: 5),
+    );
+  }
+
+  /// Resolves a focus key to its bilingual label, falling back to the key
+  /// itself so an unknown value still renders as something.
+  String focusLabel(String? key) {
+    if (key == null || key.isEmpty) return '';
+    return readingFocus[key] ?? key;
+  }
+
+  String surahName(int number) {
+    for (final s in surahs) {
+      if (s.number == number) return s.display;
+    }
+    return 'Surah $number';
+  }
+}
+
+/// Everything `GET /student/quran-progress` returns.
+///
+/// This supersedes the `quran_progress` block on the profile endpoint:
+/// it carries paginated logs and the reference data, and it is the
+/// endpoint the madrasah will keep current.
+class QuranProgressBundle {
+  final QuranProgress? progress;
+  final List<QuranProgressLog> logs;
+  final Pagination logsPagination;
+  final QuranReferenceData reference;
+
+  const QuranProgressBundle({
+    this.progress,
+    this.logs = const [],
+    this.logsPagination = const Pagination(),
+    this.reference = const QuranReferenceData(),
+  });
+
+  factory QuranProgressBundle.fromJson(Map<String, dynamic> json) {
+    final rawProgress = asMap(json['progress']);
+    final logsBlock = asMap(json['logs']) ?? const {};
+
+    return QuranProgressBundle(
+      // `progress` is null until a teacher records the first entry.
+      progress:
+          rawProgress == null ? null : QuranProgress.fromJson(rawProgress),
+      logs: asList(logsBlock['data'], QuranProgressLog.fromJson),
+      logsPagination: Pagination.fromJson(logsBlock),
+      reference:
+          QuranReferenceData.fromJson(asMap(json['reference_data']) ?? {}),
+    );
+  }
+
+  bool get hasProgress => progress != null && !progress!.isEmpty;
 }

@@ -3,15 +3,24 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../providers/attendance_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/chat_provider.dart';
 import '../../../providers/class_provider.dart';
+import '../../../providers/fee_provider.dart';
+import '../../../providers/quran_provider.dart';
+import '../../../providers/recording_provider.dart';
 import '../../../providers/dashboard_provider.dart';
 import '../../../providers/homework_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
+import '../attendance/attendance_screen.dart';
+import '../chat/chat_list_screen.dart';
 import '../homework/homework_tab.dart';
 import '../payment/pay_fees_screen.dart';
+import '../recordings/recordings_screen.dart';
+import '../routine/routine_screen.dart';
 import '../support/support_tab.dart';
 import 'edit_profile_screen.dart';
 
@@ -54,6 +63,11 @@ class ProfileTab extends StatelessWidget {
     context.read<DashboardProvider>().reset();
     context.read<NoticeProvider>().reset();
     context.read<HomeworkProvider>().reset();
+    context.read<FeeProvider>().reset();
+    context.read<AttendanceProvider>().reset();
+    context.read<RecordingProvider>().reset();
+    context.read<ChatProvider>().reset();
+    context.read<QuranProvider>().reset();
     context.read<ShellProvider>().reset();
     await context.read<AuthProvider>().logout();
   }
@@ -164,9 +178,45 @@ class ProfileTab extends StatelessWidget {
           ),
           _actionRow(
             context,
+            icon: Icons.fact_check_outlined,
+            title: 'Attendance',
+            subtitle: 'Your record subject by subject',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.calendar_month_rounded,
+            title: 'Class Routine',
+            subtitle: 'Your weekly timetable',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RoutineScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.play_circle_outline_rounded,
+            title: 'Recordings',
+            subtitle: 'Watch recorded lessons',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RecordingsScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.forum_outlined,
+            title: 'Group Chat',
+            subtitle: 'Talk to your class groups',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ChatListScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
             icon: Icons.credit_card_rounded,
-            title: 'Pay Fees',
-            subtitle: 'View and pay your dues',
+            title: 'Fees',
+            subtitle: 'Dues, payment and receipts',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const PayFeesScreen()),
             ),

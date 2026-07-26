@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../data/models/notice.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../widgets/state_views.dart';
@@ -62,8 +60,10 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF3A3520),
                   borderRadius: BorderRadius.circular(10),
@@ -80,8 +80,10 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
               const SizedBox(width: 8),
               if (notice.isPinned)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.gold.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
@@ -89,8 +91,11 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.push_pin_rounded,
-                          size: 12, color: AppColors.gold),
+                      const Icon(
+                        Icons.push_pin_rounded,
+                        size: 12,
+                        color: AppColors.gold,
+                      ),
                       const SizedBox(width: 4),
                       const Text(
                         'Pinned',
@@ -106,10 +111,7 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
               const Spacer(),
               Text(
                 notice.createdAt != null ? Fmt.date(notice.createdAt) : '',
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                ),
+                style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
               ),
             ],
           ),
@@ -146,9 +148,12 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
               ),
             ),
 
+          const SizedBox(height: 20),
+          const Divider(color: AppColors.line, height: 1),
+          const SizedBox(height: 20),
+
           // Attachments
           if (notice.allAttachments.isNotEmpty) ...[
-            const SizedBox(height: 20),
             const Text(
               'Attachments',
               style: TextStyle(
@@ -158,70 +163,25 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            ..._buildAttachments(notice),
+
+            // ..._buildAttachments(notice),
+            Image.network(
+              notice.allAttachments[0],
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.gold),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const Center(
+                  child: Icon(Icons.error, color: AppColors.danger),
+                );
+              },
+            ),
           ],
         ],
       ),
     );
-  }
-
-  /// Typed rather than `dynamic` — the previous signature meant a typo in
-  /// a field name would have failed at runtime instead of compile time.
-  List<Widget> _buildAttachments(Notice notice) {
-    return notice.allAttachments.map((url) {
-      return InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () async {
-          final uri = Uri.tryParse(url);
-          if (uri != null && await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.line),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF24504A),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: const Icon(Icons.file_present_rounded,
-                    size: 20, color: AppColors.goldLight),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _fileName(url),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const Icon(Icons.open_in_new_rounded,
-                  size: 16, color: AppColors.muted),
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
-
-  String _fileName(String url) {
-    final segments = Uri.tryParse(url)?.pathSegments ?? const <String>[];
-    if (segments.isEmpty) return 'Attachment';
-    final last = segments[segments.length - 1];
-    return last.isEmpty ? 'Attachment' : last;
   }
 }

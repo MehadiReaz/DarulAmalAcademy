@@ -115,6 +115,33 @@ class TicketProvider extends BaseProvider {
     }
   }
 
+  /// POST /student/tickets/{id}/reply
+  ///
+  /// Now a student-facing route. Returned 500 in the 26 Jul run, so the
+  /// error is surfaced rather than swallowed.
+  Future<bool> sendReply(int id, String message) async {
+    _submitting = true;
+    _submitError = null;
+    safeNotify();
+    try {
+      final reply = await _repo.reply(id: id, message: message);
+      final current = _detail;
+      if (current != null) {
+        _detail = TicketDetail(
+          ticket: current.ticket,
+          replies: [...current.replies, reply],
+        );
+      }
+      return true;
+    } on ApiException catch (e) {
+      _submitError = e.message;
+      return false;
+    } finally {
+      _submitting = false;
+      safeNotify();
+    }
+  }
+
   Future<bool> deleteTicket(int id) async {
     try {
       await _repo.delete(id);

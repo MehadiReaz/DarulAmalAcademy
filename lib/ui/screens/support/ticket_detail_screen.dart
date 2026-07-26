@@ -17,6 +17,8 @@ class TicketDetailScreen extends StatefulWidget {
 }
 
 class _TicketDetailScreenState extends State<TicketDetailScreen> {
+  final _replyController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -26,12 +28,106 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   @override
+  void dispose() {
+    _replyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendReply() async {
+    final text = _replyController.text.trim();
+    if (text.isEmpty) return;
+
+    FocusScope.of(context).unfocus();
+    final provider = context.read<TicketProvider>();
+    final ok = await provider.sendReply(widget.ticketId, text);
+
+    if (!mounted) return;
+    if (ok) {
+      _replyController.clear();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.submitError ?? 'Could not send your reply'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = context.watch<TicketProvider>();
+    final ticket = provider.detail?.ticket;
+
+    // A closed or resolved ticket is read-only.
+    final canReply = ticket != null && !ticket.isResolved;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ticket')),
-      body: _buildBody(provider),
+      body: Column(
+        children: [
+          Expanded(child: _buildBody(provider)),
+          if (canReply) _composer(provider),
+        ],
+      ),
+    );
+  }
+
+  /// Students can now reply — `/student/tickets/{id}/reply` is a
+  /// student-facing route in the current API. It returned 500 in the
+  /// 26 Jul test run, so failures surface as a snackbar rather than being
+  /// silently swallowed.
+  Widget _composer(TicketProvider provider) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.line)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _replyController,
+                minLines: 1,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Write a reply…',
+                  isDense: true,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 9),
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: FilledButton(
+                onPressed: provider.submitting ? null : _sendReply,
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  shape: const CircleBorder(),
+                ),
+                child: provider.submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF231600),
+                        ),
+                      )
+                    : const Icon(Icons.send_rounded, size: 18),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

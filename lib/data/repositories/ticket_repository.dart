@@ -9,25 +9,29 @@ class TicketRepository {
 
   TicketRepository(this._client);
 
-  /// GET /tickets  ->  { tickets: [...], pagination: {...} }
+  /// GET /student/tickets  ->  raw Laravel paginator in `data`.
+  ///
+  /// CHANGED: this used to be `GET /tickets` returning a custom
+  /// `{ tickets: [...], pagination: {...} }` envelope. The route moved
+  /// under `/student` and now returns a standard paginator, so items come
+  /// from `data.data` and page info from the root.
   Future<Paginated<SupportTicket>> list({int page = 1}) async {
     final data = await _client.get(ApiEndpoints.tickets, query: {'page': page});
     final map = asMap(data) ?? {};
 
     return Paginated(
-      items: asList(map['tickets'], SupportTicket.fromJson),
-      pagination: Pagination.fromJson(asMap(map['pagination']) ?? {}),
+      // `tickets` is still read as a fallback so a rollback of the
+      // backend change doesn't break the list.
+      items: asList(map['data'] ?? map['tickets'], SupportTicket.fromJson),
+      pagination: Pagination.fromEnvelope(map),
     );
   }
 
-  /// POST /tickets  { subject, message, priority?, category? }  ->  { ticket }
+  /// POST /student/tickets  { category, priority, subject, message }
   ///
-  /// `category` is sent even though `SupportTicketController@store` does
-  /// not read it yet. The `support_tickets.category` column is NOT NULL
-  /// with no default, so ticket creation currently fails server-side;
-  /// sending the value here means the app needs no change once `store()`
-  /// starts persisting it. Laravel ignores unvalidated keys, so it is
-  /// harmless in the meantime.
+  /// Confirmed working (201) as of the 26 Jul run — `category` is now
+  /// required and persisted, and the response is the created ticket at
+  /// the root of `data` rather than wrapped in a `ticket` key.
   Future<SupportTicket> create({
     required String subject,
     required String message,
@@ -45,27 +49,36 @@ class TicketRepository {
     return SupportTicket.fromJson(asMap(map['ticket']) ?? map);
   }
 
-  /// GET /tickets/{id}  ->  { ticket, replies: [...] }
+  /// GET /student/tickets/{id}
+  ///
+  /// Handles both envelopes: the older `{ ticket, replies: [...] }` and
+  /// the flat ticket-with-nested-replies that `POST /student/tickets` now
+  /// returns. The detail endpoint 500'd during the 26 Jul run, so which
+  /// one it settles on is unconfirmed.
   Future<TicketDetail> show(int id) async {
     final data = await _client.get(ApiEndpoints.ticket(id));
     final map = asMap(data) ?? {};
 
+    final ticketMap = asMap(map['ticket']) ?? map;
+    final repliesRaw = map['replies'] ?? ticketMap['replies'];
+
     return TicketDetail(
-      ticket: SupportTicket.fromJson(asMap(map['ticket']) ?? {}),
-      replies: asList(map['replies'], TicketReply.fromJson),
+      ticket: SupportTicket.fromJson(ticketMap),
+      replies: asList(repliesRaw, TicketReply.fromJson),
     );
   }
 
-  /// DELETE /tickets/{id}
+  /// DELETE /student/tickets/{id}
   Future<void> delete(int id) async {
     await _client.delete(ApiEndpoints.ticket(id));
   }
 
-  /// POST /tickets/{id}/reply
+  /// POST /student/tickets/{id}/reply  { message, attachment? }
   ///
-  /// NOTE: `SupportTicketController@reply` restricts replies to Admin
-  /// users, so this returns 403 for a student. Kept here, and deliberately
-  /// not surfaced in the UI, for when that opens up.
+  /// This is now a student-facing route (it sits under `/student` in the
+  /// collection), so the app exposes a reply box. It returned 500 in the
+  /// 26 Jul run — the same backend fault as the detail endpoint — so the
+  /// UI surfaces the failure rather than assuming success.
   Future<TicketReply> reply({required int id, required String message}) async {
     final data = await _client.post(
       ApiEndpoints.ticketReply(id),
