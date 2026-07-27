@@ -16,7 +16,6 @@ import '../../../providers/notice_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
 import '../attendance/attendance_screen.dart';
-import '../chat/chat_list_screen.dart';
 import '../homework/homework_tab.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
@@ -208,9 +207,7 @@ class ProfileTab extends StatelessWidget {
             icon: Icons.forum_outlined,
             title: 'Group Chat',
             subtitle: 'Talk to your class groups',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ChatListScreen()),
-            ),
+            onTap: () => context.read<ShellProvider>().goTo(ShellTab.chat),
           ),
           _actionRow(
             context,

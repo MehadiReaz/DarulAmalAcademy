@@ -11,6 +11,7 @@ class ShellTab {
   static const int home = 0;
   static const int classes = 1;
   static const int quran = 2;
+  static const int chat = 3;
   static const int notices = 3;
   static const int profile = 4;
 

@@ -9,8 +9,8 @@ import '../../../providers/dashboard_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../attendance/attendance_screen.dart';
-import '../chat/chat_list_screen.dart';
 import '../homework/homework_tab.dart';
+import '../notices/notice_tab.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../support/support_tab.dart';
@@ -63,8 +63,9 @@ class _HomeTabState extends State<HomeTab> {
                 name: user?.name,
                 unreadNotices: notices.unreadCount,
                 profileImage: user!.profilePhotoUrl!,
-                onBellTap: () =>
-                    context.read<ShellProvider>().goTo(ShellTab.notices),
+                onBellTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NoticeTab()),
+                ),
               ),
               const SizedBox(height: 14),
               _MetaChips(
@@ -531,7 +532,7 @@ class _QuickActionsGrid extends StatelessWidget {
         _ModuleItem(
           icon: Icons.campaign_rounded,
           label: 'Notice',
-          onTap: () => goToTab(ShellTab.notices),
+          onTap: () => push(const NoticeTab()),
         ),
         _ModuleItem(
           icon: Icons.menu_book_rounded,
@@ -551,7 +552,7 @@ class _QuickActionsGrid extends StatelessWidget {
         _ModuleItem(
           icon: Icons.forum_outlined,
           label: 'Group Chat',
-          onTap: () => push(const ChatListScreen()),
+          onTap: () => goToTab(ShellTab.chat),
         ),
         _ModuleItem(
           icon: Icons.support_agent_rounded,

@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../providers/notice_provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../providers/shell_provider.dart';
+import 'chat/chat_list_screen.dart';
 import 'classes/classes_tab.dart';
 import 'home/home_tab.dart';
-import 'notices/notice_tab.dart';
 import 'profile/profile_tab.dart';
 import 'quran/quran_tab.dart';
 
 /// Persistent bottom-nav shell. IndexedStack keeps each tab's scroll
 /// position and loaded data alive when switching.
 ///
-/// 5 tabs matching the prototype: Home, Classes, Qur'an, Notice, Profile.
-/// Support and Homework are reached from Home and Profile.
+/// 5 tabs: Home, Classes, Qur'an, Group Chat, Profile.
+/// Support, Homework, and Notices are reached from Home and Profile.
 ///
 /// The selected index lives in [ShellProvider] rather than local state so
 /// that screens nested inside a tab (the Home quick-action grid, for
@@ -26,14 +26,14 @@ class MainShell extends StatelessWidget {
     HomeTab(),
     ClassesTab(),
     QuranTab(),
-    NoticeTab(),
+    ChatListScreen(),
     ProfileTab(),
   ];
 
   @override
   Widget build(BuildContext context) {
     final index = context.select<ShellProvider, int>((p) => p.index);
-    final unread = context.select<NoticeProvider, int>((p) => p.unreadCount);
+    final unread = context.select<ChatProvider, int>((p) => p.totalUnread);
 
     return Scaffold(
       body: IndexedStack(index: index, children: _tabs),
@@ -74,15 +74,15 @@ class _CaretNavBar extends StatelessWidget {
     Icons.home_outlined,
     Icons.calendar_month_outlined,
     Icons.menu_book_outlined,
-    Icons.campaign_outlined,
+    Icons.forum_outlined,
     Icons.person_outline_rounded,
   ];
 
   /// Labels are no longer painted — the mockup is icon-only — but they're
   /// still read out by TalkBack/VoiceOver via [Semantics].
-  static const _labels = ['Home', 'Classes', "Qur'an", 'Notice', 'Profile'];
+  static const _labels = ['Home', 'Classes', "Qur'an", 'Group Chat', 'Profile'];
 
-  static const _noticeIndex = 3;
+  static const _chatIndex = 3;
 
   static const _barHeight = 64.0;
   static const _caretWidth = 12.0;
@@ -145,12 +145,8 @@ class _CaretNavBar extends StatelessWidget {
                               onTap: () => onTap(i),
                               radius: _barHeight / 2,
                               child: Center(
-                                child: i == _noticeIndex
+                                child: i == _chatIndex
                                     ? Badge(
-                                        // Unread state is tracked locally —
-                                        // the backend always reports
-                                        // `is_read: false`. See
-                                        // ReadStateStorage.
                                         isLabelVisible: unread > 0,
                                         label: Text('$unread'),
                                         backgroundColor: AppColors.danger,
