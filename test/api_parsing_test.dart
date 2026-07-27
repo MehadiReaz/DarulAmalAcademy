@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:darul_amal/core/network/api_client.dart';
 import 'package:darul_amal/data/models/attendance.dart';
 import 'package:darul_amal/data/models/chat.dart';
 import 'package:darul_amal/data/models/class_routine.dart';
@@ -15,6 +16,7 @@ import 'package:darul_amal/data/models/quran_progress.dart';
 import 'package:darul_amal/data/models/recording.dart';
 import 'package:darul_amal/data/models/student_user.dart';
 import 'package:darul_amal/data/models/support_ticket.dart';
+import 'package:darul_amal/data/repositories/homework_repository.dart';
 
 /// Parses the real captured API responses through every model.
 ///
@@ -353,6 +355,18 @@ void main() {
       expect(first.isSubmitted, isFalse);
       expect(first.isOverdue, isFalse);
       expect(first.dueLabel, isNotEmpty);
+    });
+
+    test('submit requires either text or file attachment', () {
+      final repo = HomeworkRepository(ApiClient());
+      expect(
+        () => repo.submit(id: 1, text: null, audioPath: null),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repo.submit(id: 1, text: '   ', audioPath: ''),
+        throwsA(isA<ArgumentError>()),
+      );
     });
   });
 

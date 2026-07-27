@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,10 +14,9 @@ import '../../widgets/state_views.dart';
 /// Homework detail + submission, backed by `GET /student/homework/{id}`
 /// and `POST /student/homework/{id}/submit`.
 ///
-/// The backend accepts a text answer and/or an audio file. Only the text
-/// path is wired here because the project has no recorder or file-picker
-/// dependency yet — `HomeworkRepository.submit` already takes an
-/// `audioPath`, so adding one is a UI-only change.
+/// The backend accepts an optional text answer and/or an optional file
+/// attachment (sent under the `audio` field, supporting png, jpg, jpeg, pdf,
+/// zip, doc, docx).
 class HomeworkDetailScreen extends StatefulWidget {
   final int homeworkId;
   const HomeworkDetailScreen({super.key, required this.homeworkId});
@@ -27,6 +27,8 @@ class HomeworkDetailScreen extends StatefulWidget {
 
 class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
   final _answerController = TextEditingController();
+  String? _selectedFilePath;
+  String? _selectedFileName;
 
   @override
   void initState() {
@@ -42,11 +44,55 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     super.dispose();
   }
 
+  Future<void> _pickAttachment() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'pdf', 'zip', 'doc', 'docx'],
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.single;
+        if (file.path != null) {
+          final ext = file.extension?.toLowerCase() ?? '';
+          const allowed = {'png', 'jpg', 'jpeg', 'pdf', 'zip', 'doc', 'docx'};
+          if (ext.isNotEmpty && !allowed.contains(ext)) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Supported formats: PNG, JPG, JPEG, PDF, ZIP, DOC, DOCX.',
+                ),
+                backgroundColor: AppColors.danger,
+              ),
+            );
+            return;
+          }
+          setState(() {
+            _selectedFilePath = file.path;
+            _selectedFileName = file.name;
+          });
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not select file: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
   Future<void> _submit() async {
     final text = _answerController.text.trim();
-    if (text.isEmpty) {
+    if (text.isEmpty && _selectedFilePath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Write your answer before submitting.')),
+        const SnackBar(
+          content: Text('Write your answer or attach a file before submitting.'),
+          backgroundColor: AppColors.danger,
+        ),
       );
       return;
     }
@@ -54,7 +100,11 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     FocusScope.of(context).unfocus();
 
     final provider = context.read<HomeworkProvider>();
-    final ok = await provider.submit(id: widget.homeworkId, text: text);
+    final ok = await provider.submit(
+      id: widget.homeworkId,
+      text: text.isNotEmpty ? text : null,
+      audioPath: _selectedFilePath,
+    );
 
     if (!mounted) return;
 
@@ -67,7 +117,13 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
       ),
     );
 
-    if (ok) _answerController.clear();
+    if (ok) {
+      _answerController.clear();
+      setState(() {
+        _selectedFilePath = null;
+        _selectedFileName = null;
+      });
+    }
   }
 
   @override
@@ -239,18 +295,83 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('Your answer'),
+        const _SectionLabel('Your answer (optional if file attached)'),
         const SizedBox(height: 10),
         TextField(
           controller: _answerController,
-          maxLines: 7,
-          minLines: 5,
+          maxLines: 5,
+          minLines: 3,
           textCapitalization: TextCapitalization.sentences,
           decoration: const InputDecoration(
             hintText: 'Write your answer here…',
             alignLabelWithHint: true,
           ),
         ),
+        const SizedBox(height: 16),
+        const _SectionLabel('Attachment (optional)'),
+        const SizedBox(height: 4),
+        const Text(
+          'Supported: PNG, JPG, JPEG, PDF, ZIP, DOC, DOCX',
+          style: TextStyle(color: AppColors.muted, fontSize: 11),
+        ),
+        const SizedBox(height: 10),
+        if (_selectedFilePath == null)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.goldLight,
+              side: const BorderSide(color: AppColors.line),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            onPressed: provider.submitting ? null : _pickAttachment,
+            icon: const Icon(Icons.upload_file_rounded, size: 20),
+            label: const Text(
+              'Upload Attachment',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.insert_drive_file_rounded,
+                    size: 22, color: AppColors.goldLight),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _selectedFileName ?? _fileName(_selectedFilePath!),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove file',
+                  onPressed: provider.submitting
+                      ? null
+                      : () {
+                          setState(() {
+                            _selectedFilePath = null;
+                            _selectedFileName = null;
+                          });
+                        },
+                  icon: const Icon(Icons.close_rounded,
+                      size: 18, color: AppColors.danger),
+                ),
+              ],
+            ),
+          ),
         if (provider.submitError != null) ...[
           const SizedBox(height: 10),
           Text(
@@ -258,7 +379,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
             style: const TextStyle(color: AppColors.danger, fontSize: 11.5),
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         AppButton(
           label: 'Submit Homework',
           icon: Icons.send_rounded,

@@ -60,14 +60,9 @@ class HomeworkRepository {
 
   /// POST /student/homework/{id}/submit
   ///
-  /// The backend accepts `text` (nullable string) and/or `audio` (an
-  /// uploaded mp3/wav/m4a up to 10 MB) and rejects the request with 422
-  /// if both are missing. It also refuses a second submission for the
-  /// same assignment with a 400.
-  ///
-  /// [audioPath] is optional so a recorder/file-picker can be wired in
-  /// later without touching this layer — when it is null the request is
-  /// sent as plain JSON rather than multipart.
+  /// The backend accepts `text` (nullable string) and/or `audio` (file
+  /// attachment: png, jpg, jpeg, pdf, zip, doc, docx) and rejects the
+  /// request with 422 if both are missing.
   Future<void> submit({
     required int id,
     String? text,
@@ -80,7 +75,7 @@ class HomeworkRepository {
     // Fail fast locally rather than burning a round trip on a request the
     // server is guaranteed to reject.
     if (!hasText && !hasAudio) {
-      throw ArgumentError('Provide either text or an audio recording.');
+      throw ArgumentError('Provide either text answer or a file attachment.');
     }
 
     if (hasAudio) {
