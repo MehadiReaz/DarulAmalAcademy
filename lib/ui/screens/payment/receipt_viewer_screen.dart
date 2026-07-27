@@ -84,10 +84,20 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
           ),
         ],
       ),
-      body: SfPdfViewer.memory(
-        widget.receipt.bytes,
-        canShowScrollHead: true,
-        canShowScrollStatus: true,
+      body: SizedBox.expand(
+        child: SfPdfViewer.memory(
+          widget.receipt.bytes,
+          canShowScrollHead: true,
+          canShowScrollStatus: true,
+          onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to load PDF: ${details.description}'),
+                backgroundColor: AppColors.danger,
+              ),
+            );
+          },
+        ),
       ),
     );
   }
