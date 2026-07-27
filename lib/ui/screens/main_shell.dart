@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -30,17 +31,65 @@ class MainShell extends StatelessWidget {
     ProfileTab(),
   ];
 
+  Future<void> _handlePopInvoked(BuildContext context, bool didPop) async {
+    if (didPop) return;
+
+    final shell = context.read<ShellProvider>();
+    if (shell.index != ShellTab.home) {
+      shell.goTo(ShellTab.home);
+      return;
+    }
+
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Exit App?'),
+        content: const Text(
+          'Are you sure you want to exit the application?',
+          style: TextStyle(color: AppColors.muted, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Exit',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldExit == true) {
+      await SystemNavigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final index = context.select<ShellProvider, int>((p) => p.index);
     final unread = context.select<ChatProvider, int>((p) => p.totalUnread);
 
-    return Scaffold(
-      body: IndexedStack(index: index, children: _tabs),
-      bottomNavigationBar: _CaretNavBar(
-        index: index,
-        unread: unread,
-        onTap: (i) => context.read<ShellProvider>().goTo(i),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) =>
+          _handlePopInvoked(context, didPop),
+      child: Scaffold(
+        body: IndexedStack(index: index, children: _tabs),
+        bottomNavigationBar: _CaretNavBar(
+          index: index,
+          unread: unread,
+          onTap: (i) => context.read<ShellProvider>().goTo(i),
+        ),
       ),
     );
   }
