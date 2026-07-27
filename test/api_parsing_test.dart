@@ -16,6 +16,7 @@ import 'package:darul_amal/data/models/quran_progress.dart';
 import 'package:darul_amal/data/models/recording.dart';
 import 'package:darul_amal/data/models/student_user.dart';
 import 'package:darul_amal/data/models/support_ticket.dart';
+import 'package:darul_amal/data/repositories/chat_repository.dart';
 import 'package:darul_amal/data/repositories/homework_repository.dart';
 
 /// Parses the real captured API responses through every model.
@@ -287,6 +288,18 @@ void main() {
 
       expect(hits.single.messageId, 129);
       expect(hits.single.senderName, 'Ben Corkery');
+    });
+
+    test('send requires either message or attachment', () {
+      final repo = ChatRepository(ApiClient());
+      expect(
+        () => repo.send(1, message: null, attachmentPath: null),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repo.send(1, message: '   ', attachmentPath: ''),
+        throwsA(isA<ArgumentError>()),
+      );
     });
   });
 

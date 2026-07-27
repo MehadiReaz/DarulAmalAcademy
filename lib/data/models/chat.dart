@@ -71,6 +71,55 @@ class ChatGroup {
       );
 }
 
+/// What an attachment can be rendered as.
+///
+/// The server's `message_type` is the first authority; when it is missing or
+/// just says `file`, the extension decides. Shared by the model and the chat
+/// UI so a "this is an image" decision is made in exactly one place.
+enum AttachmentKind { none, image, pdf, file }
+
+const _imageExtensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic'};
+
+/// Classifies a local file path, a remote URL, or a bare file name.
+AttachmentKind attachmentKindOf(String? pathOrUrl) {
+  if (pathOrUrl == null || pathOrUrl.isEmpty) return AttachmentKind.none;
+
+  var path = pathOrUrl;
+  final uri = Uri.tryParse(pathOrUrl);
+  if (uri != null && uri.hasScheme) path = uri.path;
+
+  final dot = path.lastIndexOf('.');
+  if (dot == -1 || dot == path.length - 1) return AttachmentKind.file;
+
+  final ext = path.substring(dot + 1).toLowerCase();
+  if (ext == 'pdf') return AttachmentKind.pdf;
+  if (_imageExtensions.contains(ext)) return AttachmentKind.image;
+  return AttachmentKind.file;
+}
+
+/// The display name for a local path or a remote URL.
+String attachmentNameOf(String? pathOrUrl, {String fallback = 'File'}) {
+  if (pathOrUrl == null || pathOrUrl.isEmpty) return fallback;
+
+  var path = pathOrUrl;
+  final uri = Uri.tryParse(pathOrUrl);
+  if (uri != null && uri.hasScheme) path = uri.path;
+
+  final slash = path.lastIndexOf('/');
+  final name = slash == -1 ? path : path.substring(slash + 1);
+  if (name.isEmpty) return fallback;
+
+  try {
+    return Uri.decodeComponent(name);
+  } catch (_) {
+    return name;
+  }
+}
+
+/// Sentinel so [ChatMessage.copyWith] can tell "leave this alone" apart from
+/// "set this to null" — needed to clear the local path once the upload lands.
+const Object _unset = Object();
+
 /// A message from `GET /group-chats/{id}/messages`, or the echo returned
 /// by `POST /group-chats/{id}/messages`.
 class ChatMessage {
@@ -89,6 +138,15 @@ class ChatMessage {
   final bool pending;
   final bool failed;
 
+  /// Path to the file on this device, kept only while the message is in
+  /// flight so the bubble can show the picked image before the upload
+  /// finishes. Cleared once the server echo arrives with a real URL.
+  final String? localAttachmentPath;
+
+  /// Upload progress, 0.0–1.0. Null means "in flight, but no byte counts" —
+  /// the UI shows an indeterminate spinner for that case.
+  final double? uploadProgress;
+
   const ChatMessage({
     required this.id,
     this.sender,
@@ -100,6 +158,8 @@ class ChatMessage {
     this.deletedAt,
     this.pending = false,
     this.failed = false,
+    this.localAttachmentPath,
+    this.uploadProgress,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -115,8 +175,56 @@ class ChatMessage {
         deletedAt: asDate(json['deleted_at']),
       );
 
+  /// The bubble to insert the moment the user hits send, before the request
+  /// completes. [tempId] should be negative so it can't collide with a real
+  /// server id.
+  factory ChatMessage.optimistic({
+    required int tempId,
+    NamedRef? sender,
+    String? text,
+    String? attachmentPath,
+    DateTime? createdAt,
+  }) {
+    final kind = attachmentKindOf(attachmentPath);
+    return ChatMessage(
+      id: tempId,
+      sender: sender,
+      text: text,
+      messageType: switch (kind) {
+        AttachmentKind.image => 'image',
+        AttachmentKind.pdf || AttachmentKind.file => 'file',
+        AttachmentKind.none => 'text',
+      },
+      createdAt: createdAt ?? DateTime.now(),
+      pending: true,
+      localAttachmentPath: attachmentPath,
+      uploadProgress: attachmentPath == null ? null : 0,
+    );
+  }
+
   bool get isDeleted => deletedAt != null;
   bool get hasAttachment => attachment != null && attachment!.isNotEmpty;
+
+  /// True while the file itself is still going up, as opposed to a plain
+  /// text message waiting on the response.
+  bool get isUploading => pending && localAttachmentPath != null;
+
+  /// Whatever the UI should render right now: the on-device file while the
+  /// upload is running, the remote URL once it lands.
+  String? get attachmentSource => localAttachmentPath ?? attachment;
+
+  /// True if there is anything to draw in the bubble — including a local
+  /// file that has no server URL yet.
+  bool get showsAttachment => attachmentSource != null;
+
+  AttachmentKind get attachmentKind {
+    final source = attachmentSource;
+    if (source == null) return AttachmentKind.none;
+    if (messageType == 'image') return AttachmentKind.image;
+    return attachmentKindOf(source);
+  }
+
+  String get attachmentName => attachmentNameOf(attachmentSource);
 
   /// The server records `edited_at` equal to `created_at` on insert, so a
   /// message only counts as edited when the two actually differ.
@@ -125,7 +233,13 @@ class ChatMessage {
 
   bool isMine(int? myUserId) => myUserId != null && sender?.id == myUserId;
 
-  ChatMessage copyWith({bool? pending, bool? failed}) => ChatMessage(
+  ChatMessage copyWith({
+    bool? pending,
+    bool? failed,
+    Object? localAttachmentPath = _unset,
+    Object? uploadProgress = _unset,
+  }) =>
+      ChatMessage(
         id: id,
         sender: sender,
         text: text,
@@ -136,6 +250,12 @@ class ChatMessage {
         deletedAt: deletedAt,
         pending: pending ?? this.pending,
         failed: failed ?? this.failed,
+        localAttachmentPath: identical(localAttachmentPath, _unset)
+            ? this.localAttachmentPath
+            : localAttachmentPath as String?,
+        uploadProgress: identical(uploadProgress, _unset)
+            ? this.uploadProgress
+            : uploadProgress as double?,
       );
 }
 
