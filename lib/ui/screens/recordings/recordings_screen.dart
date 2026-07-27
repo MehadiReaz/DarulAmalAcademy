@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
@@ -8,12 +7,12 @@ import '../../../data/models/recording.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/recording_provider.dart';
 import '../../widgets/state_views.dart';
+import 'youtube_player_screen.dart';
 
 /// Class recordings, backed by `GET /student/recordings`.
 ///
-/// Playback opens the video externally — the project has no webview
-/// dependency, and `embed_url` is already parsed on [Recording] for when
-/// an in-app player is added.
+/// Playback plays YouTube videos directly in the app using [YoutubePlayerScreen].
+/// Drive and non-YouTube links are not supported.
 class RecordingsScreen extends StatefulWidget {
   const RecordingsScreen({super.key});
 
@@ -30,18 +29,30 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     });
   }
 
-  Future<void> _play(Recording r) async {
-    final url = r.playableUrl;
-    if (url == null) {
+  void _play(Recording r) {
+    final videoId = r.youtubeId;
+    if (videoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This recording has no video link yet.')),
+        SnackBar(
+          content: Text(
+            r.isDrive
+                ? 'Google Drive recordings are not supported. Only YouTube videos can be played.'
+                : 'Only YouTube recordings can be played in the app.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       return;
     }
-    final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => YoutubePlayerScreen(
+          recording: r,
+          videoId: videoId,
+        ),
+      ),
+    );
   }
 
   @override
@@ -120,6 +131,8 @@ class _RecordingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPlayable = recording.isYoutubePlayable;
+
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: onPlay,
@@ -138,10 +151,12 @@ class _RecordingCard extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF24504A), Color(0xFF173731)],
+                  colors: isPlayable
+                      ? const [Color(0xFF24504A), Color(0xFF173731)]
+                      : const [Color(0xFF2A2A2A), Color(0xFF1F1F1F)],
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -150,7 +165,7 @@ class _RecordingCard extends StatelessWidget {
                     ? Icons.smart_display_rounded
                     : Icons.play_circle_fill_rounded,
                 size: 24,
-                color: AppColors.goldLight,
+                color: isPlayable ? AppColors.goldLight : AppColors.muted,
               ),
             ),
             const SizedBox(width: 13),
@@ -162,10 +177,11 @@ class _RecordingCard extends StatelessWidget {
                     recording.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                       height: 1.35,
+                      color: isPlayable ? null : AppColors.muted,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -190,13 +206,19 @@ class _RecordingCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppColors.goldLight.withValues(alpha: 0.15),
+                          color: isPlayable
+                              ? AppColors.goldLight.withValues(alpha: 0.15)
+                              : Colors.white.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          recording.sourceLabel,
-                          style: const TextStyle(
-                            color: AppColors.goldLight,
+                          isPlayable
+                              ? recording.sourceLabel
+                              : '${recording.sourceLabel} (Not supported)',
+                          style: TextStyle(
+                            color: isPlayable
+                                ? AppColors.goldLight
+                                : AppColors.muted,
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
                           ),
@@ -216,11 +238,17 @@ class _RecordingCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.open_in_new_rounded,
-                size: 15, color: AppColors.muted),
+            Icon(
+              isPlayable
+                  ? Icons.play_circle_fill_rounded
+                  : Icons.block_rounded,
+              size: 20,
+              color: isPlayable ? AppColors.gold : AppColors.muted,
+            ),
           ],
         ),
       ),
     );
   }
 }
+

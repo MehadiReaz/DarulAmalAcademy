@@ -1,13 +1,10 @@
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+
 import '../../core/utils/json_utils.dart';
 import 'student_user.dart';
 
 /// A class recording, from `GET /student/recordings` (paginated) and
 /// `GET /student/recordings/{id}`.
-///
-/// The server supplies both `video_url` (the human-facing link) and
-/// `embed_url` (the iframe-ready one). Since the app has no webview
-/// dependency, playback opens `video_url` externally — [embedUrl] is kept
-/// for when an in-app player is added.
 class Recording {
   final int id;
   final String title;
@@ -76,13 +73,22 @@ class Recording {
     return videoType.isEmpty ? 'Video' : videoType;
   }
 
-  /// Prefer the plain URL for external launch; fall back to the embed one
-  /// so a recording without `video_url` is still playable.
+  /// Prefer the plain URL for playback; fall back to the embed one.
   String? get playableUrl {
     if (videoUrl != null && videoUrl!.isNotEmpty) return videoUrl;
     if (embedUrl != null && embedUrl!.isNotEmpty) return embedUrl;
     return null;
   }
 
-  bool get isPlayable => playableUrl != null;
+  /// Extracts the YouTube video ID from [playableUrl] or [embedUrl] or [videoUrl].
+  String? get youtubeId {
+    final url = playableUrl;
+    if (url == null || url.isEmpty) return null;
+    return YoutubePlayer.convertUrlToId(url);
+  }
+
+  /// Returns true if this recording has a valid YouTube link that can be played in-app.
+  bool get isYoutubePlayable => youtubeId != null;
+
+  bool get isPlayable => isYoutubePlayable;
 }

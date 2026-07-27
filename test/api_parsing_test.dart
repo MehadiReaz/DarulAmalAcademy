@@ -219,7 +219,7 @@ void main() {
       final drive = items.firstWhere((r) => r.isDrive);
       expect(drive.title, 'Hifz Revision Session');
       expect(drive.sourceLabel, 'Google Drive');
-      expect(drive.isPlayable, isTrue);
+      expect(drive.isPlayable, isFalse);
       expect(drive.embedUrl, contains('/preview'));
 
       final yt = items.firstWhere((r) => r.isYoutube);

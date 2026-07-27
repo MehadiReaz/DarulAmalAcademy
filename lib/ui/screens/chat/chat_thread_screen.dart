@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -34,12 +35,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String? _selectedFileName;
   int? _selectedFileSize;
 
+  int? _scrolledGroupId;
+  bool _didInitialScroll = false;
+  int _lastMessageCount = 0;
+
   @override
   void dispose() {
     _input.dispose();
     _searchInput.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _jumpToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scroll.hasClients) return;
+        if (_scroll.position.pixels < _scroll.position.maxScrollExtent) {
+          _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        }
+      });
+    });
   }
 
   void _scrollToBottom() {
@@ -159,6 +177,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final provider = context.watch<ChatProvider>();
     final group = provider.activeGroup;
     final myId = context.select<AuthProvider, int?>((p) => p.user?.id);
+
+    if (group?.id != _scrolledGroupId) {
+      _scrolledGroupId = group?.id;
+      _didInitialScroll = false;
+      _lastMessageCount = 0;
+    }
+
+    if (!_didInitialScroll &&
+        provider.messages.isNotEmpty &&
+        provider.messagesState == LoadState.ready) {
+      _didInitialScroll = true;
+      _lastMessageCount = provider.messages.length;
+      _jumpToBottom();
+    } else if (_didInitialScroll && provider.messages.length != _lastMessageCount) {
+      if (provider.messages.length > _lastMessageCount && !provider.loadingOlder) {
+        _scrollToBottom();
+      }
+      _lastMessageCount = provider.messages.length;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -489,7 +526,7 @@ class _StagedAttachment extends StatelessWidget {
                       ? Image.file(
                           File(path),
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
+                          errorBuilder: (context, error, stackTrace) =>
                               const _KindTile(kind: AttachmentKind.file),
                         )
                       : _KindTile(kind: kind),
@@ -519,7 +556,7 @@ class _StagedAttachment extends StatelessWidget {
                     isImage
                         ? 'Image'
                         : (kind == AttachmentKind.pdf ? 'PDF' : 'File'),
-                    if (size != null) size,
+                    ?size,
                     if (isImage) 'Tap to preview',
                   ].join(' · '),
                   style: const TextStyle(
@@ -776,13 +813,32 @@ class _AttachmentPreview extends StatelessWidget {
     return null;
   }
 
-  Future<void> _openExternally() async {
-    final url = remoteUrl;
-    if (url == null) return;
-    final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  Future<void> _openExternally(BuildContext context) async {
+    final url = 'https://course.nexcoreit4u.com/$remoteUrl';
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(name)),
+          body: SafeArea(
+            child: SfPdfViewer.network(
+              url,
+              enableDoubleTapZooming: true,
+              enableTextSelection: true,
+              onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to open PDF: ${details.error}'),
+                    backgroundColor: AppColors.danger,
+                  ),
+                );
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _openImageViewer(BuildContext context) {
@@ -880,7 +936,7 @@ class _AttachmentPreview extends StatelessWidget {
                   ),
                 );
               },
-              errorBuilder: (context, _, __) => _Placeholder(
+              errorBuilder: (context, error, stackTrace) => _Placeholder(
                 width: maxW,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -909,7 +965,7 @@ class _AttachmentPreview extends StatelessWidget {
     final isPdf = kind == AttachmentKind.pdf;
 
     return GestureDetector(
-      onTap: uploading ? null : _openExternally,
+      onTap: uploading ? null : () => _openExternally(context),
       child: Container(
         width: MediaQuery.of(context).size.width * 0.56,
         padding: const EdgeInsets.all(9),
@@ -1049,7 +1105,7 @@ class _ImageViewer extends StatelessWidget {
             child: Image(
               image: image,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Text(
+              errorBuilder: (context, error, stackTrace) => const Text(
                 'This image could not be loaded.',
                 style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
