@@ -59,8 +59,10 @@ class FeeRepository {
   /// Returns whatever the server sends. In the test run this 404'd for
   /// the sample ID, so the shape is unconfirmed — the raw map is returned
   /// and the UI pulls a URL out of it if there is one.
-  Future<Map<String, dynamic>> receipt(int transactionId) async {
-    final data = await _client.get(ApiEndpoints.feeReceipt(transactionId));
-    return asMap(data) ?? {};
+  Future<BinaryResponse> receipt(int transactionId) {
+    return _client.getBytes(
+      ApiEndpoints.feeReceipt(transactionId),
+      accept: 'application/pdf',
+    );
   }
 }

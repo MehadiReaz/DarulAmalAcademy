@@ -1,5 +1,7 @@
 // import 'dart:developer' as dev;
 
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../config/app_config.dart';
@@ -118,6 +120,84 @@ class ApiClient {
     }
   }
 
+  /// Downloads a binary body (PDF, image, export) from an **authenticated**
+  /// endpoint.
+  ///
+  /// This exists because some endpoints return a file rather than JSON —
+  /// `GET /student/fees/receipt/{id}` responds with
+  /// `content-type: application/pdf` and a `content-disposition` filename.
+  ///
+  /// Such a URL CANNOT be handed to `url_launcher`: the browser has no
+  /// bearer token, so the server answers 302 and redirects to the web
+  /// login page. The file has to be fetched through this client, which
+  /// already attaches the token, and rendered from memory.
+  Future<BinaryResponse> getBytes(
+    String path, {
+    Map<String, dynamic>? query,
+    String accept = '*/*',
+  }) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        path,
+        queryParameters: query,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {'Accept': accept},
+        ),
+      );
+
+      final contentType = res.headers.value(Headers.contentTypeHeader);
+
+      // Dio follows redirects, so an expired session surfaces as a 200
+      // full of login-page HTML rather than a 401. Without this guard the
+      // bytes would reach a PDF renderer and fail as "corrupt file".
+      if (contentType != null && contentType.contains('text/html')) {
+        throw const ApiException(
+          message: 'Your session has expired. Please sign in again.',
+          statusCode: 401,
+        );
+      }
+
+      final bytes = Uint8List.fromList(res.data ?? const []);
+      if (bytes.isEmpty) {
+        throw const ApiException(message: 'The server returned an empty file.');
+      }
+
+      logger.i('[API] Downloaded ${bytes.length} bytes from $path');
+
+      return BinaryResponse(
+        bytes: bytes,
+        contentType: contentType,
+        filename: _filenameFrom(res.headers.value('content-disposition')),
+      );
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  String? _filenameFrom(String? disposition) {
+    if (disposition == null || disposition.isEmpty) return null;
+
+    final extended = RegExp(
+      r"filename\*=(?:UTF-8'')?([^;]+)",
+      caseSensitive: false,
+    ).firstMatch(disposition);
+    if (extended != null) {
+      final raw = extended.group(1)!.trim().replaceAll('"', '');
+      try {
+        return Uri.decodeComponent(raw);
+      } catch (_) {
+        return raw;
+      }
+    }
+
+    final plain = RegExp(
+      r'filename="?([^";]+)"?',
+      caseSensitive: false,
+    ).firstMatch(disposition);
+    return plain?.group(1)?.trim();
+  }
+
   /// Multipart upload. Laravel cannot read multipart on a real PUT request,
   /// so callers POST with `_method: PUT` — Laravel's method spoofing routes
   /// it to the PUT route correctly.
@@ -205,5 +285,40 @@ class ApiClient {
       statusCode: status,
       fieldErrors: fieldErrors,
     );
+  }
+}
+
+class BinaryResponse {
+  final Uint8List bytes;
+  final String? filename;
+  final String? contentType;
+
+  const BinaryResponse({required this.bytes, this.filename, this.contentType});
+
+  bool get isPdf {
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x25 && // %
+        bytes[1] == 0x50 && // P
+        bytes[2] == 0x44 && // D
+        bytes[3] == 0x46) { // F
+      return true;
+    }
+    return (contentType ?? '').contains('application/pdf') ||
+        (filename ?? '').toLowerCase().endsWith('.pdf');
+  }
+
+  int get sizeInKb => (bytes.length / 1024).ceil();
+
+  /// A filename safe to write to disk on every platform. The server sends
+  /// names containing spaces and apostrophes
+  /// ("Mehadi Hasan's_..._report.pdf"), which Android and iOS tolerate but
+  /// Windows does not.
+  String safeFilename({String fallback = 'document.pdf'}) {
+    final name = filename;
+    if (name == null || name.trim().isEmpty) return fallback;
+    return name
+        .replaceAll(RegExp(r'''[\\/:*?"<>|']'''), '')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .trim();
   }
 }

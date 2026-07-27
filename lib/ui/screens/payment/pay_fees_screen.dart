@@ -7,6 +7,7 @@ import '../../../data/models/fee.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/fee_provider.dart';
 import '../../widgets/state_views.dart';
+import 'receipt_viewer_screen.dart';
 
 /// Fees, backed by `/student/fees/dues`, `/history`, `/pay/initiate`,
 /// `/pay/verify` and `/receipt/{id}`.
@@ -121,22 +122,39 @@ class _PayFeesScreenState extends State<PayFeesScreen>
     );
   }
 
+  /// Downloads the receipt PDF and opens it in-app.
+  ///
+  /// `GET /student/fees/receipt/{id}` streams the PDF itself from behind
+  /// `auth:sanctum`, so it cannot be handed to `url_launcher` — without
+  /// the bearer token the browser gets a 302 to the login page. The bytes
+  /// come through the authenticated client and render from memory.
   Future<void> _openReceipt(FeeTransaction txn) async {
     final provider = context.read<FeeProvider>();
-
-    // Some rows carry the document inline; only call the endpoint if not.
-    var url = txn.documentUrl;
-    url ??= await provider.receiptUrl(txn.id);
+    final receipt = await provider.downloadReceipt(txn.id);
 
     if (!mounted) return;
-    if (url == null || url.isEmpty) {
-      _toast('No receipt available for this payment yet.', error: true);
+
+    if (receipt == null) {
+      _toast(
+        provider.receiptError ?? 'Could not open the receipt.',
+        error: true,
+      );
       return;
     }
-    final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!receipt.isPdf) {
+      _toast('The server returned an unexpected file type.', error: true);
+      return;
     }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReceiptViewerScreen(
+          receipt: receipt,
+          title: txn.transactionNo ?? 'Receipt',
+        ),
+      ),
+    );
   }
 
   void _toast(String message, {bool error = false}) {
@@ -294,7 +312,11 @@ class _PayFeesScreenState extends State<PayFeesScreen>
               );
             }
             final txn = provider.history[i];
-            return _FeeCard(fee: txn, onReceipt: () => _openReceipt(txn));
+            return _FeeCard(
+              fee: txn,
+              busy: provider.isDownloadingReceipt(txn.id),
+              onReceipt: () => _openReceipt(txn),
+            );
           },
         ),
       ),
@@ -493,9 +515,18 @@ class _FeeCard extends StatelessWidget {
                       label: Text(busy ? 'Starting…' : 'Pay now'),
                     )
                   : OutlinedButton.icon(
-                      onPressed: onReceipt,
-                      icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                      label: const Text('View receipt'),
+                      onPressed: busy ? null : onReceipt,
+                      icon: busy
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.gold,
+                              ),
+                            )
+                          : const Icon(Icons.receipt_long_rounded, size: 16),
+                      label: Text(busy ? 'Opening…' : 'View receipt'),
                     ),
             ),
           ],

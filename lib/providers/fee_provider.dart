@@ -1,3 +1,4 @@
+import '../core/network/api_client.dart';
 import '../core/network/api_exception.dart';
 import '../data/models/fee.dart';
 import '../data/models/pagination.dart';
@@ -25,6 +26,11 @@ class FeeProvider extends BaseProvider {
 
   bool _initiating = false;
   String? _payError;
+
+  /// Transaction currently being downloaded, so only that row shows a
+  /// spinner rather than the whole list.
+  int? _downloadingReceiptId;
+  String? _receiptError;
   PaymentInitiation? _lastInitiation;
 
   List<FeeTransaction> get dues => _dues;
@@ -41,6 +47,8 @@ class FeeProvider extends BaseProvider {
 
   bool get initiating => _initiating;
   String? get payError => _payError;
+  String? get receiptError => _receiptError;
+  bool isDownloadingReceipt(int id) => _downloadingReceiptId == id;
   PaymentInitiation? get lastInitiation => _lastInitiation;
 
   /// Total still owed across every unpaid due.
@@ -52,7 +60,10 @@ class FeeProvider extends BaseProvider {
   /// Currency of the outstanding dues, or null when rows disagree — the
   /// seeded data mixes GBP and EUR, so a single symbol can't be assumed.
   String? get duesCurrency {
-    final codes = _dues.map((d) => d.currency).where((c) => c.isNotEmpty).toSet();
+    final codes = _dues
+        .map((d) => d.currency)
+        .where((c) => c.isNotEmpty)
+        .toSet();
     return codes.length == 1 ? codes.first : null;
   }
 
@@ -127,10 +138,7 @@ class FeeProvider extends BaseProvider {
   }
 
   Future<void> refreshAll() async {
-    await Future.wait([
-      loadDues(force: true),
-      loadHistory(force: true),
-    ]);
+    await Future.wait([loadDues(force: true), loadHistory(force: true)]);
   }
 
   /// Starts a payment for an invoice and returns the gateway hand-off, or
@@ -168,21 +176,25 @@ class FeeProvider extends BaseProvider {
     }
   }
 
-  /// Pulls a downloadable URL out of the receipt payload if there is one.
-  /// The endpoint's shape is unconfirmed, so this is best-effort.
-  Future<String?> receiptUrl(int transactionId) async {
+  /// Fetches a receipt PDF as bytes.
+  ///
+  /// Returns null on failure and records the reason in [receiptError].
+  /// The bytes are held only by the caller — receipts are small (~16 KB)
+  /// and re-fetching is cheap, so nothing is cached here.
+  Future<BinaryResponse?> downloadReceipt(int transactionId) async {
+    _downloadingReceiptId = transactionId;
+    _receiptError = null;
+    safeNotify();
     try {
-      final map = await _repo.receipt(transactionId);
-      for (final key in ['url', 'receipt_url', 'pdf_url', 'download_url',
-        'document', 'path']) {
-        final v = map[key];
-        if (v is String && v.isNotEmpty) return v;
-      }
-      return null;
+      return await _repo.receipt(transactionId);
     } on ApiException catch (e) {
-      _payError = e.message;
-      safeNotify();
+      _receiptError = e.isNotFound
+          ? 'No receipt has been generated for this payment yet.'
+          : e.message;
       return null;
+    } finally {
+      _downloadingReceiptId = null;
+      safeNotify();
     }
   }
 
@@ -200,6 +212,8 @@ class FeeProvider extends BaseProvider {
     _initiating = false;
     _payError = null;
     _lastInitiation = null;
+    _downloadingReceiptId = null;
+    _receiptError = null;
     safeNotify();
   }
 }
