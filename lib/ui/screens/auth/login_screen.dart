@@ -62,15 +62,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 78,
-                    height: 78,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.goldGradient,
-                      borderRadius: BorderRadius.circular(24),
+                  Center(
+                    child: Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Image.asset(
+                          'assets/darulamal-1.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.menu_book_rounded,
-                        size: 38, color: Color(0xFF231600)),
                   ),
                   const SizedBox(height: 24),
                   const Text(
@@ -101,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              '+880',
+                              '+91',
                               style: TextStyle(
                                 color: AppColors.cream,
                                 fontWeight: FontWeight.w700,

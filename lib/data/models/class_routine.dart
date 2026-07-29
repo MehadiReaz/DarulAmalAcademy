@@ -32,6 +32,14 @@ class ClassRoutine {
   });
 
   factory ClassRoutine.fromJson(Map<String, dynamic> json) {
+    final courseMap = asMap(json['course']);
+    final rawSubject = json['subject'] ??
+        (courseMap != null &&
+                courseMap['subjects'] is List &&
+                (courseMap['subjects'] as List).isNotEmpty
+            ? (courseMap['subjects'] as List).first
+            : null);
+
     return ClassRoutine(
       id: asInt(json['id']),
       weekday: asIntOrNull(json['weekday']),
@@ -45,9 +53,9 @@ class ClassRoutine {
       teacher: json['teacher'] == null
           ? null
           : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
-      subject: json['subject'] == null
+      subject: rawSubject == null
           ? null
-          : SubjectRef.fromJson(asMap(json['subject']) ?? {}),
+          : SubjectRef.fromJson(asMap(rawSubject) ?? {}),
     );
   }
 

@@ -81,7 +81,7 @@ class HomeworkRepository {
     if (hasAudio) {
       final form = FormData.fromMap({
         if (hasText) 'text': trimmed,
-        'audio': await MultipartFile.fromFile(audioPath),
+        'attachment': await MultipartFile.fromFile(audioPath),
       });
       await _client.postMultipart(ApiEndpoints.homeworkSubmit(id), form);
       return;

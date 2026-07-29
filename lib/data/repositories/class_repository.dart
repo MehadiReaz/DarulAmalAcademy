@@ -22,14 +22,14 @@ class ClassRepository {
     return asList(raw, EnrolledCourse.fromJson);
   }
 
-  /// GET /student/classes/today  ->  [ ... ]  (bare array, no wrapper key)
+  /// GET /student/my-classes  ->  [ ... ]
   ///
-  /// NOTE: returned 403 "You are not authorized to access this class" for
-  /// an enrolled student in the 26 Jul run — a server-side authorisation
-  /// fault, not a client one.
+  /// Replaces the broken `/student/classes/today` endpoint.
   Future<List<ClassRoutine>> today() async {
-    final data = await _client.get(ApiEndpoints.classesToday);
-    return asList(data, ClassRoutine.fromJson);
+    final data = await _client.get(ApiEndpoints.myClasses);
+    final map = asMap(data);
+    final raw = map == null ? data : (map['courses'] ?? map['data'] ?? data);
+    return asList(raw, ClassRoutine.fromJson);
   }
 
   /// GET /student/classes/upcoming  ->  [ ... ]
