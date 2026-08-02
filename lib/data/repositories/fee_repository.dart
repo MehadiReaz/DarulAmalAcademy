@@ -69,10 +69,18 @@ class FeeRepository {
   ///
   /// Returns the transaction's post-verification state. Called after the
   /// student returns from the gateway.
-  Future<FeeTransaction?> verifyPayment(String transactionId) async {
+  Future<FeeTransaction?> verifyPayment(
+    String transactionId, {
+    String? paymentId,
+    String? signature,
+  }) async {
+    final body = <String, dynamic>{'transaction_id': transactionId};
+    if (paymentId != null) body['razorpay_payment_id'] = paymentId;
+    if (signature != null) body['razorpay_signature'] = signature;
+
     final data = await _client.post(
       ApiEndpoints.feePayVerify,
-      body: {'transaction_id': transactionId},
+      body: body,
     );
     final map = asMap(data);
     if (map == null) return null;

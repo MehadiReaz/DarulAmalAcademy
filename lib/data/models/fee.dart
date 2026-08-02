@@ -134,6 +134,8 @@ class PaymentInitiation {
   final String? gateway;
   final double? amount;
   final String? currency;
+  final String? razorpayKey;
+  final int? razorAmount;
   final Map<String, dynamic> raw;
 
   const PaymentInitiation({
@@ -143,6 +145,8 @@ class PaymentInitiation {
     this.gateway,
     this.amount,
     this.currency,
+    this.razorpayKey,
+    this.razorAmount,
     this.raw = const {},
   });
 
@@ -155,6 +159,13 @@ class PaymentInitiation {
         asStringOrNull(json['link']) ??
         asStringOrNull(json['checkout_url']);
 
+    int? rAmount;
+    if (json['razor_amount'] != null) {
+      rAmount = asInt(json['razor_amount']);
+    } else if (json['razorpay_amount'] != null) {
+      rAmount = asInt(json['razorpay_amount']);
+    }
+
     return PaymentInitiation(
       transactionId: asStringOrNull(json['transaction_id']) ??
           asStringOrNull(json['transactionId']) ??
@@ -165,9 +176,16 @@ class PaymentInitiation {
           asStringOrNull(json['payment_method']),
       amount: json['amount'] == null ? null : asDouble(json['amount']),
       currency: asStringOrNull(json['currency']),
+      razorpayKey: asStringOrNull(json['razorpay_key']) ??
+          asStringOrNull(json['razor_key']) ??
+          asStringOrNull(json['key']),
+      razorAmount: rAmount,
       raw: json,
     );
   }
 
   bool get hasRedirect => paymentUrl != null && paymentUrl!.isNotEmpty;
+
+  bool get isRazorpayNative =>
+      razorpayKey != null && razorpayKey!.isNotEmpty;
 }

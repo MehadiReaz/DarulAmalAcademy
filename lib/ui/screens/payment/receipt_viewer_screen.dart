@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
@@ -8,12 +9,6 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 
 /// Renders a receipt PDF fetched from `GET /student/fees/receipt/{id}`.
-///
-/// The bytes are passed in already downloaded rather than the viewer
-/// being handed a URL. That is deliberate: the endpoint sits behind
-/// `auth:sanctum`, so any loader that fetches the URL itself — a webview,
-/// `PdfViewer.uri`, `url_launcher` — arrives without the bearer token and
-/// receives a 302 to the web login page instead of a PDF.
 class ReceiptViewerScreen extends StatefulWidget {
   final BinaryResponse receipt;
   final String title;
@@ -31,17 +26,53 @@ class ReceiptViewerScreen extends StatefulWidget {
 class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
   bool _saving = false;
 
-  /// Writes the PDF into the app's documents directory so the student has
-  /// a copy outside the session.
-  ///
-  /// Kept separate from viewing on purpose — rendering works straight from
-  /// memory, so nothing touches the filesystem unless the student asks.
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final dir = await getApplicationDocumentsDirectory();
       final name = widget.receipt.safeFilename(fallback: 'receipt.pdf');
-      final file = File('${dir.path}/$name');
+      
+      String? savedPath;
+      bool usedFilePicker = false;
+      try {
+        savedPath = await FilePicker.saveFile(
+          dialogTitle: 'Save Receipt PDF',
+          fileName: name,
+          bytes: widget.receipt.bytes,
+        );
+        usedFilePicker = true;
+      } catch (e) {
+        // Fall back if saveFile is not supported on device
+      }
+
+      if (usedFilePicker) {
+        // FilePicker writes bytes natively to Android SAF / iOS documents
+        if (savedPath != null && savedPath.isNotEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Receipt saved successfully!')),
+          );
+        }
+        return;
+      }
+
+      Directory? targetDir;
+      if (Platform.isAndroid) {
+        final extDirs = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+        if (extDirs != null && extDirs.isNotEmpty) {
+          targetDir = extDirs.first;
+        } else {
+          targetDir = await getExternalStorageDirectory();
+        }
+      } else if (Platform.isIOS) {
+        targetDir = await getApplicationDocumentsDirectory();
+      } else {
+        targetDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+      }
+
+      targetDir ??= await getApplicationDocumentsDirectory();
+      await targetDir.create(recursive: true);
+
+      final file = File('${targetDir.path}/$name');
       await file.writeAsBytes(widget.receipt.bytes);
 
       if (!mounted) return;
@@ -51,8 +82,8 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not save the receipt.'),
+        SnackBar(
+          content: Text('Could not save receipt: $e'),
           backgroundColor: AppColors.danger,
         ),
       );

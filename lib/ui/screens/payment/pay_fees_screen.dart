@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fee.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/fee_provider.dart';
 import '../../widgets/state_views.dart';
+import 'payment_success_screen.dart';
 import 'payment_webview_screen.dart';
 import 'receipt_viewer_screen.dart';
 
@@ -21,11 +24,20 @@ class PayFeesScreen extends StatefulWidget {
 class _PayFeesScreenState extends State<PayFeesScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  late final Razorpay _razorpay;
+
+  PaymentInitiation? _activeInitiation;
+  FeeTransaction? _activeDue;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    _razorpay = Razorpay();
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handleRazorpaySuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handleRazorpayError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleRazorpayExternalWallet);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<FeeProvider>();
       provider.loadDues();
@@ -36,7 +48,64 @@ class _PayFeesScreenState extends State<PayFeesScreen>
   @override
   void dispose() {
     _tabs.dispose();
+    _razorpay.clear();
     super.dispose();
+  }
+
+  Future<void> _handleRazorpaySuccess(PaymentSuccessResponse response) async {
+    final initiation = _activeInitiation;
+    final due = _activeDue;
+    _activeInitiation = null;
+    _activeDue = null;
+
+    if (initiation == null || due == null || !mounted) return;
+
+    final provider = context.read<FeeProvider>();
+    final transactionId =
+        initiation.transactionId ?? due.transactionNo ?? due.id.toString();
+
+    final verified = await provider.verify(
+      transactionId,
+      paymentId: response.paymentId,
+      signature: response.signature,
+    );
+
+    if (!mounted) return;
+
+    if (verified) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              PaymentSuccessScreen(due: due, initiation: initiation),
+        ),
+      );
+    } else {
+      _toast(
+        provider.payError ?? 'Payment completed, but verification failed.',
+        error: true,
+      );
+    }
+  }
+
+  void _handleRazorpayError(PaymentFailureResponse response) {
+    _activeInitiation = null;
+    _activeDue = null;
+
+    if (!mounted) return;
+
+    if (response.code == Razorpay.PAYMENT_CANCELLED) {
+      _toast('Payment cancelled.', error: false);
+      return;
+    }
+
+    _toast(
+      response.message ?? 'Payment failed. Please try again.',
+      error: true,
+    );
+  }
+
+  void _handleRazorpayExternalWallet(ExternalWalletResponse response) {
+    _toast('Redirecting to wallet: ${response.walletName}');
   }
 
   Future<void> _pay(FeeTransaction due) async {
@@ -59,13 +128,45 @@ class _PayFeesScreenState extends State<PayFeesScreen>
       return;
     }
 
-    // The gateways wired on the backend (PayPal / Stripe / Razorpay /
-    // Flutterwave / Midtrans) are opened in an in-app WebView.
+    // Razorpay Native Checkout
+    if (initiation.isRazorpayNative) {
+      _activeInitiation = initiation;
+      _activeDue = due;
+
+      final user = context.read<AuthProvider>().user;
+      final double amt = initiation.amount ?? due.amount;
+      final amountInPaise = initiation.razorAmount ?? (amt * 100).toInt();
+
+      final prefill = <String, String>{};
+      final phone = user?.phone;
+      final email = user?.email;
+      if (phone != null && phone.isNotEmpty) prefill['contact'] = phone;
+      if (email != null && email.isNotEmpty) prefill['email'] = email;
+
+      final options = <String, dynamic>{
+        'key': initiation.razorpayKey,
+        'amount': amountInPaise,
+        'name': 'Darul Amal Academy',
+        'description': due.title,
+        'currency': initiation.currency ?? 'INR',
+        if (prefill.isNotEmpty) 'prefill': prefill,
+        'notes': {
+          'transaction_id': initiation.transactionId ?? '',
+          'invoice_id': invoiceId,
+        },
+      };
+
+      try {
+        _razorpay.open(options);
+      } catch (e) {
+        _toast('Could not launch Razorpay payment gateway.', error: true);
+      }
+      return;
+    }
+
+    // Fallback in-app WebView
     var checkoutUrl = initiation.paymentUrl;
 
-    // Razorpay in particular answers `/pay/initiate` with a transaction
-    // but no link — its hosted page comes from
-    // `/student/fees/pay/webview-url`, so that is tried before giving up.
     if ((checkoutUrl == null || checkoutUrl.isEmpty) &&
         initiation.transactionId != null) {
       checkoutUrl = await provider.checkoutUrl(initiation.transactionId!);

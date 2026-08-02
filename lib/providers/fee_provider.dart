@@ -179,11 +179,19 @@ class FeeProvider extends BaseProvider {
 
   /// Confirms a payment after the student returns from the gateway.
   /// Refreshes both lists on success so the due disappears.
-  Future<bool> verify(String transactionId) async {
+  Future<bool> verify(
+    String transactionId, {
+    String? paymentId,
+    String? signature,
+  }) async {
     _payError = null;
     safeNotify();
     try {
-      await _repo.verifyPayment(transactionId);
+      await _repo.verifyPayment(
+        transactionId,
+        paymentId: paymentId,
+        signature: signature,
+      );
       await refreshAll();
       return true;
     } on ApiException catch (e) {
