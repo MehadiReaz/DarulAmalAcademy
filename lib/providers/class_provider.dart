@@ -47,10 +47,12 @@ class ClassProvider extends BaseProvider {
 
   /// True when today/upcoming failed but the routine endpoint works.
   ///
-  /// `/student/classes/today` and `/upcoming` return 403 for enrolled
-  /// students because of a server-side authorisation fault. The Classes
-  /// tab uses this to fall back to the weekly routine instead of showing
-  /// an error the student can do nothing about.
+  /// The 403s that used to make this permanently true came from calling
+  /// `/student/classes/today` — a path that does not exist. The correct
+  /// singular paths are now used, so this should only fire on a real
+  /// server fault. The Classes tab still falls back to the weekly
+  /// routine when it does, rather than showing an error the student can
+  /// do nothing about.
   bool get liveEndpointsBlocked =>
       _todayState == LoadState.error && _upcomingState == LoadState.error;
 

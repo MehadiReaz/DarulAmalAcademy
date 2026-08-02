@@ -42,20 +42,77 @@ class HomeworkRepository {
 
   HomeworkRepository(this._client);
 
-  /// GET /student/homework  ->  bare array in `data` (no wrapper key).
+  /// GET /student/homework
   Future<List<Homework>> list({HomeworkFilter filter = HomeworkFilter.all}) async {
     final status = filter.value;
     final data = await _client.get(
       ApiEndpoints.homework,
       query: status == null ? null : {'status': status},
     );
-    return asList(data, Homework.fromJson);
+    final rawMaps = extractHomeworkMaps(data);
+    return rawMaps.map(Homework.fromJson).toList();
+  }
+
+  /// Recursively extracts homework item maps from raw response data.
+  /// Handles bare lists, paginator envelopes ({assignments: {data: ...}}),
+  /// and category-keyed maps ({"Ongoing Assignment": [...]}).
+  static List<Map<String, dynamic>> extractHomeworkMaps(dynamic raw) {
+    final result = <Map<String, dynamic>>[];
+    if (raw == null) return result;
+
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) {
+          result.add(Map<String, dynamic>.from(item));
+        }
+      }
+      return result;
+    }
+
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+
+      // Check if wrapped in `assignments`
+      if (map.containsKey('assignments')) {
+        return extractHomeworkMaps(map['assignments']);
+      }
+
+      // Check if wrapped in `data` (paginator)
+      if (map.containsKey('data')) {
+        return extractHomeworkMaps(map['data']);
+      }
+
+      // Iterate through keys which may represent status/category buckets
+      for (final entry in map.entries) {
+        if (entry.value is List) {
+          for (final item in (entry.value as List)) {
+            if (item is Map) {
+              result.add(Map<String, dynamic>.from(item));
+            }
+          }
+        } else if (entry.value is Map) {
+          final subMap = Map<String, dynamic>.from(entry.value as Map);
+          if (subMap.containsKey('id') && subMap.containsKey('title')) {
+            result.add(subMap);
+          } else {
+            result.addAll(extractHomeworkMaps(subMap));
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   /// GET /student/homework/{id}
   Future<HomeworkDetail> detail(int id) async {
     final data = await _client.get(ApiEndpoints.homeworkDetail(id));
-    return HomeworkDetail.fromJson(asMap(data) ?? {});
+    final map = asMap(data) ?? {};
+    final unwrapped = asMap(map['assignment']) ??
+        asMap(map['homework']) ??
+        asMap(map['data']) ??
+        map;
+    return HomeworkDetail.fromJson(unwrapped);
   }
 
   /// POST /student/homework/{id}/submit

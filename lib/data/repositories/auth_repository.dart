@@ -79,6 +79,26 @@ class AuthRepository {
     );
   }
 
+  /// POST /auth/login-with-password  { phone, password }  ->  { user, token }
+  ///
+  /// Same session payload as [verifyOtp], so the caller cannot tell which
+  /// route opened the session.
+  Future<AuthSession> loginWithPassword({
+    required String phone,
+    required String password,
+  }) async {
+    final data = await _client.post(
+      ApiEndpoints.loginWithPassword,
+      body: {'phone': phone, 'password': password},
+    );
+
+    final map = asMap(data) ?? {};
+    return AuthSession(
+      user: StudentUser.fromJson(asMap(map['user']) ?? {}),
+      token: asString(map['token']),
+    );
+  }
+
   /// GET /auth/student/profile  ->  { user }
   Future<StudentUser> profile() async {
     final data = await _client.get(ApiEndpoints.studentProfile);
@@ -145,11 +165,13 @@ class AuthRepository {
   }
 
   /// POST /auth/forgot-password { email_or_phone }
-  Future<void> forgotPassword(String emailOrPhone) async {
-    await _client.post(
+  Future<String?> forgotPassword(String emailOrPhone) async {
+    final data = await _client.post(
       ApiEndpoints.forgotPassword,
-      body: {'email_or_phone': emailOrPhone},
+      body: {'email_or_phone': emailOrPhone, 'phone': emailOrPhone},
     );
+    final map = asMap(data);
+    return asStringOrNull(map?['otp']) ?? asStringOrNull(map?['code']);
   }
 
   /// POST /auth/reset-password { email_or_phone, token, password, ... }
@@ -161,7 +183,10 @@ class AuthRepository {
   }) async {
     await _client.post(ApiEndpoints.resetPassword, body: {
       'email_or_phone': emailOrPhone,
+      'phone': emailOrPhone,
       'token': token,
+      'otp': token,
+      'code': token,
       'password': password,
       'password_confirmation': passwordConfirmation,
     });

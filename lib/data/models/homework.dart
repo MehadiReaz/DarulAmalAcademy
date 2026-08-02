@@ -42,27 +42,56 @@ class Homework {
     this.isOverdue = false,
   });
 
-  factory Homework.fromJson(Map<String, dynamic> json) => Homework(
-        id: asInt(json['id']),
-        title: asString(json['title'], fallback: 'Homework'),
-        description: asStringOrNull(json['description']),
-        subject: json['subject'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['subject']) ?? {}),
-        teacher: json['teacher'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
-        assignedDate: asStringOrNull(json['assigned_date']),
-        dueDate: asStringOrNull(json['due_date']),
-        submissionStatus:
-            asString(json['submission_status'], fallback: 'pending'),
-        submittedAt: asDate(json['submitted_at']),
-        // `marks` is `gained_mark`, which may be an int, a decimal string,
-        // or null — keep it as text since it is only ever displayed.
-        marks: asStringOrNull(json['marks']),
-        attachment: asStringOrNull(json['attachment']),
-        isOverdue: asBool(json['is_overdue']),
-      );
+  factory Homework.fromJson(Map<String, dynamic> json) {
+    final statusStr = asStringOrNull(json['submission_status']) ??
+        asStringOrNull(json['status']) ??
+        asStringOrNull(json['assignment_status']);
+
+    final submittedDone = asBool(json['submitted_done']);
+
+    final totalMarkMap = asMap(json['total_mark']);
+    final gainedMark = totalMarkMap != null ? asStringOrNull(totalMarkMap['gained_mark']) : null;
+    final maxMark = asStringOrNull(json['mark']) ?? asStringOrNull(json['marks']);
+
+    final isSub = submittedDone ||
+        totalMarkMap != null ||
+        statusStr?.toLowerCase() == 'submitted' ||
+        statusStr?.toLowerCase() == 'completed' ||
+        statusStr?.toLowerCase() == 'completed assignment' ||
+        statusStr?.toLowerCase() == 'submitted assignment';
+
+    final String? markDisplay = (gainedMark != null && maxMark != null)
+        ? '$gainedMark / $maxMark'
+        : (gainedMark ?? maxMark);
+
+    final remainingDays = asIntOrNull(json['remaining_days']);
+
+    return Homework(
+      id: asInt(json['id']),
+      title: asString(json['title'], fallback: 'Homework'),
+      description: asStringOrNull(json['description']),
+      subject: json['subject'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['subject']) ?? {}),
+      teacher: json['teacher'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
+      assignedDate: asStringOrNull(json['assigned_date']) ??
+          asStringOrNull(json['start_date']) ??
+          asStringOrNull(json['issue']),
+      dueDate: asStringOrNull(json['due_date']) ??
+          asStringOrNull(json['end_date']) ??
+          asStringOrNull(json['deadline']),
+      submissionStatus: isSub ? 'submitted' : 'pending',
+      submittedAt: asDate(json['submitted_at']),
+      marks: markDisplay,
+      attachment: asStringOrNull(json['attachment']),
+      isOverdue: asBool(json['is_overdue']) ||
+          (statusStr?.toLowerCase() == 'expired') ||
+          (statusStr?.toLowerCase() == 'overdue') ||
+          (!isSub && remainingDays != null && remainingDays <= 0),
+    );
+  }
 
   bool get isSubmitted => submissionStatus.toLowerCase() == 'submitted';
   bool get isPending => !isSubmitted;
@@ -153,6 +182,20 @@ class HomeworkDetail {
   });
 
   factory HomeworkDetail.fromJson(Map<String, dynamic> json) {
+    final statusStr = asStringOrNull(json['submission_status']) ??
+        asStringOrNull(json['status']) ??
+        asStringOrNull(json['assignment_status']);
+
+    final submittedDone = asBool(json['submitted_done']);
+    final submissions = asDouble(json['submissions']);
+    final isSub = submittedDone ||
+        submissions > 0 ||
+        statusStr?.toLowerCase() == 'submitted' ||
+        statusStr?.toLowerCase() == 'completed' ||
+        statusStr?.toLowerCase() == 'submitted assignment';
+
+    final markVal = json['marks'] ?? json['mark'] ?? json['total_mark'];
+
     return HomeworkDetail(
       id: asInt(json['id']),
       title: asString(json['title'], fallback: 'Homework'),
@@ -164,13 +207,16 @@ class HomeworkDetail {
       teacher: json['teacher'] == null
           ? null
           : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
-      assignedDate: asStringOrNull(json['assigned_date']),
-      dueDate: asStringOrNull(json['due_date']),
-      submissionStatus:
-          asString(json['submission_status'], fallback: 'pending'),
+      assignedDate: asStringOrNull(json['assigned_date']) ??
+          asStringOrNull(json['start_date']) ??
+          asStringOrNull(json['issue']),
+      dueDate: asStringOrNull(json['due_date']) ??
+          asStringOrNull(json['end_date']) ??
+          asStringOrNull(json['deadline']),
+      submissionStatus: isSub ? 'submitted' : 'pending',
       submittedText: asStringOrNull(json['submitted_text']),
       submittedAudio: asStringOrNull(json['submitted_audio']),
-      marks: asStringOrNull(json['marks']),
+      marks: markVal?.toString(),
       teacherRemarks: asStringOrNull(json['teacher_remarks']),
       attachments: _parseAttachments(json['attachments']),
       history: asList(json['submission_history'], HomeworkSubmission.fromJson),

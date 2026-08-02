@@ -370,6 +370,55 @@ void main() {
       expect(first.dueLabel, isNotEmpty);
     });
 
+    test('parses nested category-keyed assignments payload', () {
+      final sampleBackendPayload = {
+        'assignments': {
+          'current_page': 1,
+          'data': {
+            'Ongoing Assignment': [
+              {
+                'id': 35,
+                'user_id': 20,
+                'subject_id': 41,
+                'title': 'Dexter Becker',
+                'start_date': '15-07-2026',
+                'end_date': '11-08-2026',
+                'mark': 143,
+                'description': 'Lorem ipsum',
+                'submitted_done': false,
+                'status': 'Due',
+                'remaining_days': 9,
+                'issue': 'Jul 15 , 2026',
+                'deadline': '11-08-2026',
+                'submissions': '0.00',
+                'assignment_status': 'Ongoing Assignment',
+                'subject': {
+                  'id': 41,
+                  'name': 'Fiqh',
+                  'color': '#FF00FF',
+                },
+              }
+            ]
+          }
+        }
+      };
+
+      final items = HomeworkRepository.extractHomeworkMaps(sampleBackendPayload)
+          .map(Homework.fromJson)
+          .toList();
+
+      expect(items, hasLength(1));
+      final hw = items.first;
+      expect(hw.id, 35);
+      expect(hw.title, 'Dexter Becker');
+      expect(hw.subject?.name, 'Fiqh');
+      expect(hw.assignedDate, '15-07-2026');
+      expect(hw.dueDate, '11-08-2026');
+      expect(hw.marks, '143');
+      expect(hw.isPending, isTrue);
+      expect(hw.isSubmitted, isFalse);
+    });
+
     test('submit requires either text or file attachment', () {
       final repo = HomeworkRepository(ApiClient());
       expect(

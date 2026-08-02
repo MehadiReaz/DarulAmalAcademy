@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fee.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/fee_provider.dart';
 import '../../widgets/state_views.dart';
+import 'payment_webview_screen.dart';
 import 'receipt_viewer_screen.dart';
 
 /// Fees, backed by `/student/fees/dues`, `/history`, `/pay/initiate`,
 /// `/pay/verify` and `/receipt/{id}`.
-///
-/// This replaces the previous placeholder, which showed dashboard totals
-/// and a "payment coming soon" button.
 class PayFeesScreen extends StatefulWidget {
   const PayFeesScreen({super.key});
 
@@ -63,62 +60,39 @@ class _PayFeesScreenState extends State<PayFeesScreen>
     }
 
     // The gateways wired on the backend (PayPal / Stripe / Razorpay /
-    // Flutterwave / Midtrans) are all browser redirect flows, so payment
-    // completes outside the app and we verify on return.
-    if (initiation.hasRedirect) {
-      final uri = Uri.tryParse(initiation.paymentUrl!);
-      if (uri != null && await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (!mounted) return;
-        _promptVerify(initiation);
-        return;
-      }
+    // Flutterwave / Midtrans) are opened in an in-app WebView.
+    var checkoutUrl = initiation.paymentUrl;
+
+    // Razorpay in particular answers `/pay/initiate` with a transaction
+    // but no link — its hosted page comes from
+    // `/student/fees/pay/webview-url`, so that is tried before giving up.
+    if ((checkoutUrl == null || checkoutUrl.isEmpty) &&
+        initiation.transactionId != null) {
+      checkoutUrl = await provider.checkoutUrl(initiation.transactionId!);
+      if (!mounted) return;
+    }
+
+    if (checkoutUrl != null && checkoutUrl.isNotEmpty) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PaymentWebViewScreen(
+            checkoutUrl: checkoutUrl!,
+            initiation: initiation,
+            due: due,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+      provider.refreshAll();
+      return;
     }
 
     _toast(
-      'Payment started, but the gateway sent no checkout link. '
-      'Please contact the office.',
+      provider.payError ??
+          'Payment started, but the gateway sent no checkout link. '
+              'Please contact the office.',
       error: true,
-    );
-  }
-
-  /// After the browser hand-off there is no callback into the app, so the
-  /// student confirms and we call `/pay/verify` to refresh the record.
-  void _promptVerify(PaymentInitiation initiation) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Finished paying?'),
-        content: const Text(
-          'Once you have completed the payment in your browser, tap '
-          'Check status to update your record.',
-          style: TextStyle(fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Later'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop();
-              final id = initiation.transactionId;
-              if (id == null) {
-                await context.read<FeeProvider>().refreshAll();
-                return;
-              }
-              final ok = await context.read<FeeProvider>().verify(id);
-              if (!mounted) return;
-              _toast(
-                ok ? 'Payment record updated' : 'Could not confirm yet',
-                error: !ok,
-              );
-            },
-            child: const Text('Check status'),
-          ),
-        ],
-      ),
     );
   }
 

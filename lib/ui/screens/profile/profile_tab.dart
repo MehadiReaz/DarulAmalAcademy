@@ -12,11 +12,15 @@ import '../../../providers/quran_provider.dart';
 import '../../../providers/recording_provider.dart';
 import '../../../providers/dashboard_provider.dart';
 import '../../../providers/homework_provider.dart';
+import '../../../providers/lesson_provider.dart';
 import '../../../providers/notice_provider.dart';
+import '../../../providers/notification_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
 import '../attendance/attendance_screen.dart';
 import '../homework/homework_tab.dart';
+import '../lessons/lessons_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../routine/routine_screen.dart';
@@ -67,6 +71,8 @@ class ProfileTab extends StatelessWidget {
     context.read<RecordingProvider>().reset();
     context.read<ChatProvider>().reset();
     context.read<QuranProvider>().reset();
+    context.read<NotificationProvider>().reset();
+    context.read<LessonProvider>().reset();
     context.read<ShellProvider>().reset();
     await context.read<AuthProvider>().logout();
   }
@@ -191,6 +197,24 @@ class ProfileTab extends StatelessWidget {
             subtitle: 'Your weekly timetable',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const RoutineScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.auto_stories_outlined,
+            title: 'My Lessons',
+            subtitle: 'Lesson plans and material',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LessonsScreen()),
+            ),
+          ),
+          _actionRow(
+            context,
+            icon: Icons.notifications_none_rounded,
+            title: 'Notifications',
+            subtitle: 'Everything the madrasah has sent you',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
             ),
           ),
           _actionRow(

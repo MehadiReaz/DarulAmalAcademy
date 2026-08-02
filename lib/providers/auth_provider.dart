@@ -160,6 +160,85 @@ class AuthProvider extends BaseProvider {
     }
   }
 
+  // ---------------------------------------------------- password login
+
+  /// Signs in with a phone number and password instead of an OTP.
+  ///
+  /// Opens exactly the same session as [verifyOtp] — token stored, user
+  /// cached, status flipped — so the rest of the app is unaffected by
+  /// which route the student used.
+  Future<bool> loginWithPassword({
+    required String phone,
+    required String password,
+  }) async {
+    _setBusy(true);
+    _error = null;
+
+    try {
+      final session = await _repo.loginWithPassword(
+        phone: phone,
+        password: password,
+      );
+
+      _client.setToken(session.token);
+      await _storage.saveToken(session.token);
+      await _storage.saveUser(session.user.toJson());
+
+      _user = session.user;
+      _status = AuthStatus.authenticated;
+      _pendingPhone = null;
+      _devOtp = null;
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  /// POST /auth/forgot-password — sends a reset link/code.
+  Future<bool> forgotPassword(String emailOrPhone) async {
+    _setBusy(true);
+    _error = null;
+    _pendingPhone = emailOrPhone;
+    try {
+      final devOtp = await _repo.forgotPassword(emailOrPhone);
+      _devOtp = devOtp;
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  /// POST /auth/reset-password — resets password with OTP code.
+  Future<bool> resetPassword({
+    required String emailOrPhone,
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    _setBusy(true);
+    _error = null;
+    try {
+      await _repo.resetPassword(
+        emailOrPhone: emailOrPhone,
+        token: token,
+        password: password,
+        passwordConfirmation: passwordConfirmation,
+      );
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
   // --------------------------------------------------------------- profile
 
   Future<void> reloadProfile() async {

@@ -26,16 +26,43 @@ class FeeRepository {
     );
   }
 
-  /// POST /student/fees/pay/initiate  { invoiceId }
+  /// POST /student/fees/pay/initiate  { id, invoiceId }
   ///
-  /// The parameter name is camelCase on the wire — that's the server's
-  /// validator (`invoiceId`), not a typo.
+  /// Both spellings are sent on purpose. The app has always sent
+  /// `invoiceId` (camelCase, matching the validator this was written
+  /// against) while the current Postman collection sends `id`. Laravel
+  /// ignores unexpected keys, so submitting both works against either
+  /// validator and removes a guess from the payment path — drop one once
+  /// the controller is confirmed.
   Future<PaymentInitiation> initiatePayment(int invoiceId) async {
     final data = await _client.post(
       ApiEndpoints.feePayInitiate,
-      body: {'invoiceId': invoiceId},
+      body: {'id': invoiceId, 'invoiceId': invoiceId},
     );
     return PaymentInitiation.fromJson(asMap(data) ?? {});
+  }
+
+  /// GET /student/fees/pay/webview-url?transaction_id=
+  ///
+  /// A second way to reach the gateway: some gateways answer
+  /// `/pay/initiate` with a transaction but no checkout link, and the
+  /// hosted page has to be requested separately. Returns null when the
+  /// server has no URL to give rather than throwing, so the caller can
+  /// fall through to its own error message.
+  Future<String?> webviewUrl(String transactionId) async {
+    final data = await _client.get(
+      ApiEndpoints.feePayWebviewUrl,
+      query: {'transaction_id': transactionId},
+    );
+
+    if (data is String) return data.isEmpty ? null : data;
+
+    final map = asMap(data) ?? {};
+    return asStringOrNull(map['url']) ??
+        asStringOrNull(map['webview_url']) ??
+        asStringOrNull(map['payment_url']) ??
+        asStringOrNull(map['redirect_url']) ??
+        asStringOrNull(map['link']);
   }
 
   /// POST /student/fees/pay/verify  { transaction_id }

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../widgets/app_button.dart';
+import 'forgot_password_screen.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,11 +17,19 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+
+  /// The backend supports both `/auth/send-otp` + `/auth/verify-otp` and
+  /// `/auth/login-with-password`. OTP stays the default; password is the
+  /// escape hatch when SMS does not arrive.
+  bool _usePassword = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -29,8 +38,21 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
 
     final auth = context.read<AuthProvider>();
-    final ok = await auth.sendOtp(_phoneController.text.trim());
+    final phone = _phoneController.text.trim();
 
+    if (_usePassword) {
+      final ok = await auth.loginWithPassword(
+        phone: phone,
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      // On success the root gate swaps to the shell on its own, so there
+      // is nothing to navigate to here.
+      if (!ok) _showError(auth.error ?? 'Could not sign you in');
+      return;
+    }
+
+    final ok = await auth.sendOtp(phone);
     if (!mounted) return;
 
     if (ok) {
@@ -38,13 +60,23 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const OtpScreen()),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(auth.error ?? 'Could not send OTP'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
+      _showError(auth.error ?? 'Could not send OTP');
     }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.danger),
+    );
+  }
+
+  void _forgotPassword() {
+    final phone = _phoneController.text.trim();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(initialPhone: phone),
+      ),
+    );
   }
 
   @override
@@ -85,10 +117,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Sign in with your mobile number to continue',
+                  Text(
+                    _usePassword
+                        ? 'Sign in with your mobile number and password'
+                        : 'Sign in with your mobile number to continue',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.muted, fontSize: 13),
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
+                    ),
                   ),
                   const SizedBox(height: 30),
                   TextFormField(
@@ -139,13 +176,75 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                     onFieldSubmitted: (_) => _submit(),
                   ),
+                  if (_usePassword) ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 20,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (!_usePassword) return null;
+                        final v = value ?? '';
+                        if (v.isEmpty) return 'Enter your password';
+                        if (v.length < 6) return 'That password looks too short';
+                        return null;
+                      },
+                      onFieldSubmitted: (_) => _submit(),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: auth.busy ? null : _forgotPassword,
+                        child: const Text(
+                          'Forgot password?',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   AppButton(
-                    label: 'Send OTP',
+                    label: _usePassword ? 'Sign In' : 'Send OTP',
                     loading: auth.busy,
                     onPressed: _submit,
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: auth.busy
+                        ? null
+                        : () {
+                            context.read<AuthProvider>().clearError();
+                            setState(() => _usePassword = !_usePassword);
+                          },
+                    child: Text(
+                      _usePassword
+                          ? 'Sign in with an OTP instead'
+                          : 'Sign in with a password instead',
+                      style: const TextStyle(
+                        color: AppColors.goldLight,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   const Text(
                     'Only registered students can log in.\nContact your madrasah if you need access.',
                     textAlign: TextAlign.center,

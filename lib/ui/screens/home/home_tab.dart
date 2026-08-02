@@ -7,10 +7,13 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/dashboard_provider.dart';
 import '../../../providers/notice_provider.dart';
+import '../../../providers/notification_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../attendance/attendance_screen.dart';
 import '../homework/homework_tab.dart';
+import '../lessons/lessons_screen.dart';
 import '../notices/notice_tab.dart';
+import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../support/support_tab.dart';
@@ -29,8 +32,10 @@ class _HomeTabState extends State<HomeTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ClassProvider>().loadToday();
       context.read<DashboardProvider>().load();
-      // Loads the unread badge on the bell and the bottom Notice tab.
+      // Loads the unread count for the Notice quick action.
       context.read<NoticeProvider>().loadNotices();
+      // Drives the dot on the header bell.
+      context.read<NotificationProvider>().load();
     });
   }
 
@@ -40,6 +45,7 @@ class _HomeTabState extends State<HomeTab> {
     final dashboard = context.watch<DashboardProvider>();
     final classes = context.watch<ClassProvider>();
     final notices = context.watch<NoticeProvider>();
+    final notifications = context.watch<NotificationProvider>();
     final user = auth.user;
 
     return Scaffold(
@@ -52,6 +58,7 @@ class _HomeTabState extends State<HomeTab> {
             await Future.wait([
               classes.loadToday(force: true),
               dashboard.load(force: true),
+              notifications.load(force: true),
               auth.reloadProfile(),
             ]);
           },
@@ -61,17 +68,22 @@ class _HomeTabState extends State<HomeTab> {
             children: [
               _Header(
                 name: user?.name,
-                unreadNotices: notices.unreadCount,
-                profileImage: user!.profilePhotoUrl!,
+                // The bell now opens the notification centre; notices keep
+                // their own quick-action tile below.
+                unreadAlerts: notifications.unreadCount,
+                // Was `user!.profilePhotoUrl!` — a student with no photo,
+                // or a cold start before the profile call returns, threw
+                // on this line and blanked the whole Home tab.
+                profileImage: user?.profilePhotoUrl,
                 onBellTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NoticeTab()),
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
                 ),
               ),
               const SizedBox(height: 14),
               _MetaChips(
-                studentId: user.studentId,
-                rollNo: user.rollNo,
-                className: user.className,
+                studentId: user?.studentId,
+                rollNo: user?.rollNo,
+                className: user?.className,
               ),
               const SizedBox(height: 20),
               _LiveClassCard(dashboard: dashboard),
@@ -79,6 +91,7 @@ class _HomeTabState extends State<HomeTab> {
               const SizedBox(height: 12),
               _QuickActionsGrid(
                 pendingHomework: dashboard.quickStats.pendingAssignments,
+                unreadNotices: notices.unreadCount,
               ),
             ],
           ),
@@ -91,13 +104,16 @@ class _HomeTabState extends State<HomeTab> {
 // ─────────────────────────────────────────────── Header
 class _Header extends StatelessWidget {
   final String? name;
-  final int unreadNotices;
+
+  /// Unread notifications, not notices — the bell opens the notification
+  /// centre now.
+  final int unreadAlerts;
   final VoidCallback? onBellTap;
   final String? profileImage;
 
   const _Header({
     this.name,
-    this.unreadNotices = 0,
+    this.unreadAlerts = 0,
     this.onBellTap,
     this.profileImage,
   });
@@ -206,7 +222,7 @@ class _Header extends StatelessWidget {
                     size: 20,
                     color: AppColors.cream,
                   ),
-                  if (unreadNotices > 0)
+                  if (unreadAlerts > 0)
                     Positioned(
                       top: 10,
                       right: 11,
@@ -492,7 +508,14 @@ class _QuickActionsGrid extends StatelessWidget {
   /// `quick_stats.pending_assignments`, so it costs no extra request.
   final int pendingHomework;
 
-  const _QuickActionsGrid({this.pendingHomework = 0});
+  /// Badge on the Notice tile. The header bell now belongs to the
+  /// notification centre, so unread notices surface here instead.
+  final int unreadNotices;
+
+  const _QuickActionsGrid({
+    this.pendingHomework = 0,
+    this.unreadNotices = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -532,6 +555,7 @@ class _QuickActionsGrid extends StatelessWidget {
         _ModuleItem(
           icon: Icons.campaign_rounded,
           label: 'Notice',
+          badge: unreadNotices,
           onTap: () => push(const NoticeTab()),
         ),
         _ModuleItem(
@@ -543,6 +567,11 @@ class _QuickActionsGrid extends StatelessWidget {
           icon: Icons.play_circle_outline_rounded,
           label: 'Recordings',
           onTap: () => push(const RecordingsScreen()),
+        ),
+        _ModuleItem(
+          icon: Icons.auto_stories_outlined,
+          label: 'Lessons',
+          onTap: () => push(const LessonsScreen()),
         ),
         _ModuleItem(
           icon: Icons.fact_check_outlined,

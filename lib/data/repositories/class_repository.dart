@@ -1,5 +1,6 @@
 import '../../core/constants/api_endpoints.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/utils/json_utils.dart';
 import '../models/class_routine.dart';
 import '../models/enrolled_course.dart';
@@ -22,22 +23,38 @@ class ClassRepository {
     return asList(raw, EnrolledCourse.fromJson);
   }
 
-  /// GET /student/my-classes  ->  [ ... ]
+  /// GET /student/class/today  ->  [ ... ]
   ///
-  /// Replaces the broken `/student/classes/today` endpoint.
+  /// This used to call `/student/my-classes` instead, because the path
+  /// being requested (`/student/classes/today`) does not exist — the
+  /// segment is singular. With the correct path the real endpoint is
+  /// used, and the enrolled-course list stays as a fallback so a server
+  /// fault degrades to "today's classes look like your class list"
+  /// rather than an empty screen.
   Future<List<ClassRoutine>> today() async {
-    final data = await _client.get(ApiEndpoints.myClasses);
-    final map = asMap(data);
-    final raw = map == null ? data : (map['courses'] ?? map['data'] ?? data);
-    return asList(raw, ClassRoutine.fromJson);
+    try {
+      final data = await _client.get(ApiEndpoints.classesToday);
+      return _routines(data);
+    } on ApiException catch (_) {
+      final data = await _client.get(ApiEndpoints.myClasses);
+      return _routines(data);
+    }
   }
 
-  /// GET /student/classes/upcoming  ->  [ ... ]
-  ///
-  /// Same 403 as [today].
+  /// GET /student/class/upcoming  ->  [ ... ]
   Future<List<ClassRoutine>> upcoming() async {
     final data = await _client.get(ApiEndpoints.classesUpcoming);
-    return asList(data, ClassRoutine.fromJson);
+    return _routines(data);
+  }
+
+  /// Both endpoints may answer with a bare array or wrap it in
+  /// `classes` / `courses` / `data`.
+  List<ClassRoutine> _routines(dynamic data) {
+    final map = asMap(data);
+    final raw = map == null
+        ? data
+        : (map['classes'] ?? map['courses'] ?? map['data'] ?? data);
+    return asList(raw, ClassRoutine.fromJson);
   }
 
   /// GET /student/my-class-routine

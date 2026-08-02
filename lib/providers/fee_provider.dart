@@ -160,6 +160,23 @@ class FeeProvider extends BaseProvider {
     }
   }
 
+  /// Asks the backend for a hosted checkout URL for a transaction.
+  ///
+  /// Used when `/pay/initiate` comes back without a redirect link — some
+  /// gateways expose the page only through this endpoint. Returns null
+  /// and records [payError] when nothing usable comes back.
+  Future<String?> checkoutUrl(String transactionId) async {
+    try {
+      final url = await _repo.webviewUrl(transactionId);
+      if (url == null || url.isEmpty) return null;
+      return url;
+    } on ApiException catch (e) {
+      _payError = e.message;
+      safeNotify();
+      return null;
+    }
+  }
+
   /// Confirms a payment after the student returns from the gateway.
   /// Refreshes both lists on success so the due disappears.
   Future<bool> verify(String transactionId) async {

@@ -12,7 +12,9 @@ import 'data/repositories/class_repository.dart';
 import 'data/repositories/dashboard_repository.dart';
 import 'data/repositories/fee_repository.dart';
 import 'data/repositories/homework_repository.dart';
+import 'data/repositories/lesson_repository.dart';
 import 'data/repositories/notice_repository.dart';
+import 'data/repositories/notification_repository.dart';
 import 'data/repositories/quran_repository.dart';
 import 'data/repositories/recording_repository.dart';
 import 'data/repositories/ticket_repository.dart';
@@ -23,7 +25,9 @@ import 'providers/class_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/fee_provider.dart';
 import 'providers/homework_provider.dart';
+import 'providers/lesson_provider.dart';
 import 'providers/notice_provider.dart';
+import 'providers/notification_provider.dart';
 import 'providers/quran_provider.dart';
 import 'providers/recording_provider.dart';
 import 'providers/shell_provider.dart';
@@ -85,6 +89,12 @@ class DarulAmalApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => QuranProvider(QuranRepository(client)),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => NotificationProvider(NotificationRepository(client)),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => LessonProvider(LessonRepository(client)),
         ),
         // Owns the selected bottom-nav tab so nested screens can navigate.
         ChangeNotifierProvider(create: (_) => ShellProvider()),

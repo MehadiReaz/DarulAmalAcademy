@@ -6,7 +6,14 @@ import '../../../providers/ticket_provider.dart';
 import '../../widgets/app_button.dart';
 
 class CreateTicketScreen extends StatefulWidget {
-  const CreateTicketScreen({super.key});
+  final String? initialCategory;
+  final String? initialSubject;
+
+  const CreateTicketScreen({
+    super.key,
+    this.initialCategory,
+    this.initialSubject,
+  });
 
   @override
   State<CreateTicketScreen> createState() => _CreateTicketScreenState();
@@ -33,6 +40,18 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     'admission': 'Admission',
     'other': 'Other',
   };
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialSubject != null) {
+      _subjectController.text = widget.initialSubject!;
+    }
+    if (widget.initialCategory != null &&
+        _categories.containsKey(widget.initialCategory)) {
+      _category = widget.initialCategory!;
+    }
+  }
 
   @override
   void dispose() {
