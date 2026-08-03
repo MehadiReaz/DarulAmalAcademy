@@ -48,12 +48,21 @@ class Homework {
         asStringOrNull(json['assignment_status']);
 
     final submittedDone = asBool(json['submitted_done']);
+    final isSubmittedFlag = asBool(json['is_submitted']) || asBool(json['submitted']);
+    final hasSubmittedContent = json['submitted_at'] != null ||
+        json['submitted_text'] != null ||
+        json['submitted_audio'] != null;
+    final hasHistory = (json['submission_history'] is List && (json['submission_history'] as List).isNotEmpty) ||
+        (json['history'] is List && (json['history'] as List).isNotEmpty);
 
     final totalMarkMap = asMap(json['total_mark']);
     final gainedMark = totalMarkMap != null ? asStringOrNull(totalMarkMap['gained_mark']) : null;
     final maxMark = asStringOrNull(json['mark']) ?? asStringOrNull(json['marks']);
 
     final isSub = submittedDone ||
+        isSubmittedFlag ||
+        hasSubmittedContent ||
+        hasHistory ||
         totalMarkMap != null ||
         statusStr?.toLowerCase() == 'submitted' ||
         statusStr?.toLowerCase() == 'completed' ||
@@ -188,8 +197,15 @@ class HomeworkDetail {
 
     final submittedDone = asBool(json['submitted_done']);
     final submissions = asDouble(json['submissions']);
+    final historyList = asList(json['submission_history'], HomeworkSubmission.fromJson);
+    final hasSubmittedContent = json['submitted_text'] != null || json['submitted_audio'] != null;
+    final isSubmittedFlag = asBool(json['is_submitted']) || asBool(json['submitted']);
+
     final isSub = submittedDone ||
+        isSubmittedFlag ||
         submissions > 0 ||
+        hasSubmittedContent ||
+        historyList.isNotEmpty ||
         statusStr?.toLowerCase() == 'submitted' ||
         statusStr?.toLowerCase() == 'completed' ||
         statusStr?.toLowerCase() == 'submitted assignment';

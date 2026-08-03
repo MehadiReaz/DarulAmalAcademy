@@ -24,7 +24,16 @@ class HomeworkProvider extends BaseProvider {
   bool _submitting = false;
   String? _submitError;
 
-  List<Homework> get items => _items;
+  List<Homework> get items {
+    switch (_filter) {
+      case HomeworkFilter.pending:
+        return _items.where((h) => h.isPending).toList();
+      case HomeworkFilter.submitted:
+        return _items.where((h) => h.isSubmitted).toList();
+      case HomeworkFilter.all:
+        return _items;
+    }
+  }
   LoadState get listState => _listState;
   String? get listError => _listError;
   HomeworkFilter get filter => _filter;
