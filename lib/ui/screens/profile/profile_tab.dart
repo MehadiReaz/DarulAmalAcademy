@@ -3,18 +3,19 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/models/student_user.dart';
 import '../../../providers/attendance_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/class_provider.dart';
-import '../../../providers/fee_provider.dart';
-import '../../../providers/quran_provider.dart';
-import '../../../providers/recording_provider.dart';
 import '../../../providers/dashboard_provider.dart';
+import '../../../providers/fee_provider.dart';
 import '../../../providers/homework_provider.dart';
 import '../../../providers/lesson_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../providers/quran_provider.dart';
+import '../../../providers/recording_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
 import '../attendance/attendance_screen.dart';
@@ -25,6 +26,7 @@ import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../routine/routine_screen.dart';
 import '../support/support_tab.dart';
+import '../../widgets/app_toast.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -35,8 +37,7 @@ class ProfileTab extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Log out?'),
         content: const Text(
           'You will need your mobile number and an OTP to sign in again.',
@@ -45,13 +46,11 @@ class ProfileTab extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.muted)),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.muted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Log out',
-                style: TextStyle(color: AppColors.danger)),
+            child: const Text('Log out', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -59,8 +58,6 @@ class ProfileTab extends StatelessWidget {
 
     if (confirmed != true || !context.mounted) return;
 
-    // Clear feature state so the next student starts clean. Missing one
-    // here leaks the previous student's data into the next session.
     context.read<ClassProvider>().reset();
     context.read<TicketProvider>().reset();
     context.read<DashboardProvider>().reset();
@@ -83,277 +80,553 @@ class ProfileTab extends StatelessWidget {
     final user = auth.user;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 100),
-        children: [
-          Center(
-            child: Column(
-              children: [
-                Container(
-                  width: 84,
-                  height: 84,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.goldGradient,
-                    borderRadius: BorderRadius.circular(26),
-                    image: user?.profilePhotoUrl != null
-                        ? DecorationImage(
-                            image: NetworkImage(user!.profilePhotoUrl!),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: user?.profilePhotoUrl != null
-                      ? null
-                      : Text(
-                          Fmt.initials(user?.name),
-                          style: const TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF231600),
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  user?.name ?? 'Student',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  [
-                    if (user?.studentId != null) 'ID ${user!.studentId}',
-                    if (user?.rollNo != null) 'Roll ${user!.rollNo}',
-                    user?.className ?? '',
-                  ].where((s) => s.isNotEmpty).join(' · '),
-                  style:
-                      const TextStyle(color: AppColors.muted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 26),
-          _infoRow(Icons.badge_outlined, 'Student ID',
-              user?.studentId ?? 'Not set'),
-          _infoRow(Icons.tag_rounded, 'Roll No', user?.rollNo ?? 'Not set'),
-          _infoRow(Icons.class_outlined, 'Class', user?.className ?? '—'),
-          _infoRow(Icons.email_outlined, 'Email', user?.email ?? 'Not set'),
-          _infoRow(Icons.phone_outlined, 'Phone', user?.phone ?? 'Not set'),
-          if (user?.address != null)
-            _infoRow(Icons.home_outlined, 'Address', user!.address!),
-          if (user?.bloodGroup != null)
-            _infoRow(Icons.bloodtype_outlined, 'Blood Group',
-                user!.bloodGroup!),
-          if (user?.session != null)
-            _infoRow(Icons.event_note_outlined, 'Session', user!.session!),
-          const SizedBox(height: 18),
-          _actionRow(
-            context,
-            icon: Icons.edit_outlined,
-            title: 'Edit Profile',
-            subtitle: 'Update your details',
-            onTap: () => Navigator.of(context).push(
+      appBar: AppBar(
+        title: const Text('My Profile'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: AppColors.gold),
+            tooltip: 'Edit Profile',
+            onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const EditProfileScreen()),
             ),
           ),
-          _actionRow(
-            context,
-            icon: Icons.refresh_rounded,
-            title: 'Refresh Profile',
-            subtitle: 'Pull the latest info from the server',
-            onTap: () async {
-              await context.read<AuthProvider>().reloadProfile();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Profile refreshed')),
-                );
-              }
-            },
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 100),
+        children: [
+          // Header Hero Banner
+          _ProfileHeroCard(user: user),
+          const SizedBox(height: 20),
+
+          // Quick Personal Details Grid
+          const _SectionHeader(title: 'PERSONAL DETAILS'),
+          const SizedBox(height: 10),
+          _PersonalDetailsCard(user: user),
+          const SizedBox(height: 24),
+
+          // Academics Section
+          const _SectionHeader(title: 'ACADEMIC & STUDIES'),
+          const SizedBox(height: 10),
+          _ActionCardGroup(
+            children: [
+              _ActionTile(
+                icon: Icons.assignment_rounded,
+                title: 'Homework',
+                subtitle: 'View and submit assignments',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const HomeworkTab()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.fact_check_outlined,
+                title: 'Attendance',
+                subtitle: 'Subject-wise attendance log',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.calendar_month_rounded,
+                title: 'Class Routine',
+                subtitle: 'Weekly timetable & schedule',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const RoutineScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.auto_stories_outlined,
+                title: 'My Lessons',
+                subtitle: 'Lesson plans and study materials',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LessonsScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.play_circle_outline_rounded,
+                title: 'Recordings',
+                subtitle: 'Watch recorded live classes',
+                isLast: true,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const RecordingsScreen()),
+                ),
+              ),
+            ],
           ),
-          _actionRow(
-            context,
-            icon: Icons.assignment_rounded,
-            title: 'Homework',
-            subtitle: 'View and submit your assignments',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HomeworkTab()),
+          const SizedBox(height: 24),
+
+          // Communication Section
+          const _SectionHeader(title: 'COMMUNICATION'),
+          const SizedBox(height: 10),
+          _ActionCardGroup(
+            children: [
+              _ActionTile(
+                icon: Icons.notifications_none_rounded,
+                title: 'Notifications',
+                subtitle: 'Madrasah announcements & alerts',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.forum_outlined,
+                title: 'Group Chat',
+                subtitle: 'Connect with class peers & teachers',
+                isLast: true,
+                onTap: () => context.read<ShellProvider>().goTo(ShellTab.chat),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Finance & Support Section
+          const _SectionHeader(title: 'FINANCE & SUPPORT'),
+          const SizedBox(height: 10),
+          _ActionCardGroup(
+            children: [
+              _ActionTile(
+                icon: Icons.credit_card_rounded,
+                title: 'Fees & Payments',
+                subtitle: 'Fee dues, pay online & receipts',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PayFeesScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.support_agent_rounded,
+                title: 'Help & Support',
+                subtitle: 'Submit support tickets',
+                isLast: true,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SupportTab()),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Account Settings Section
+          const _SectionHeader(title: 'ACCOUNT & SYSTEM'),
+          const SizedBox(height: 10),
+          _ActionCardGroup(
+            children: [
+              _ActionTile(
+                icon: Icons.edit_outlined,
+                title: 'Edit Profile',
+                subtitle: 'Update your personal details',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.refresh_rounded,
+                title: 'Refresh Profile',
+                subtitle: 'Sync latest info with server',
+                onTap: () async {
+                  await context.read<AuthProvider>().reloadProfile();
+                  if (context.mounted) {
+                    AppToast.showInfo(context, 'Profile refreshed');
+                  }
+                },
+              ),
+              _ActionTile(
+                icon: Icons.logout_rounded,
+                title: 'Log Out',
+                subtitle: 'Sign out from this device',
+                danger: true,
+                isLast: true,
+                onTap: () => _confirmLogout(context),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Hero Card
+class _ProfileHeroCard extends StatelessWidget {
+  final StudentUser? user;
+  const _ProfileHeroCard({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = user?.profilePhotoUrl;
+    final name = user?.name ?? 'Student';
+    final studentId = user?.studentId;
+    final rollNo = user?.rollNo;
+    final className = user?.className;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.surfaceAlt,
+            AppColors.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Avatar with glowing gradient border
+          Container(
+            padding: const EdgeInsets.all(3.5),
+            decoration: BoxDecoration(
+              gradient: AppColors.goldGradient,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.gold.withValues(alpha: 0.25),
+                  blurRadius: 16,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              radius: 42,
+              backgroundColor: AppColors.bgDeep,
+              backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                  ? NetworkImage(photoUrl)
+                  : null,
+              child: (photoUrl == null || photoUrl.isEmpty)
+                  ? Text(
+                      Fmt.initials(name),
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.gold,
+                      ),
+                    )
+                  : null,
             ),
           ),
-          _actionRow(
-            context,
-            icon: Icons.fact_check_outlined,
-            title: 'Attendance',
-            subtitle: 'Your record subject by subject',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+          const SizedBox(height: 14),
+          // Student Name
+          Text(
+            name,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppColors.cream,
             ),
           ),
-          _actionRow(
-            context,
-            icon: Icons.calendar_month_rounded,
-            title: 'Class Routine',
-            subtitle: 'Your weekly timetable',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RoutineScreen()),
-            ),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.auto_stories_outlined,
-            title: 'My Lessons',
-            subtitle: 'Lesson plans and material',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const LessonsScreen()),
-            ),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.notifications_none_rounded,
-            title: 'Notifications',
-            subtitle: 'Everything the madrasah has sent you',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            ),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.play_circle_outline_rounded,
-            title: 'Recordings',
-            subtitle: 'Watch recorded lessons',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RecordingsScreen()),
-            ),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.forum_outlined,
-            title: 'Group Chat',
-            subtitle: 'Talk to your class groups',
-            onTap: () => context.read<ShellProvider>().goTo(ShellTab.chat),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.credit_card_rounded,
-            title: 'Fees',
-            subtitle: 'Dues, payment and receipts',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PayFeesScreen()),
-            ),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.support_agent_rounded,
-            title: 'Support',
-            subtitle: 'Submit a support ticket',
-            // SupportTab builds its own Scaffold; the extra wrapper here
-            // used to nest two, which broke its FAB placement.
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SupportTab()),
-            ),
-          ),
-          _actionRow(
-            context,
-            icon: Icons.logout_rounded,
-            title: 'Log out',
-            subtitle: null,
-            danger: true,
-            onTap: () => _confirmLogout(context),
+          const SizedBox(height: 6),
+          // Student Badges / Meta Chips
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if (studentId != null)
+                _heroChip(Icons.badge_outlined, 'ID: $studentId'),
+              if (rollNo != null)
+                _heroChip(Icons.tag_rounded, 'Roll: $rollNo'),
+              if (className != null && className != '—')
+                _heroChip(Icons.school_outlined, className),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value) {
+  Widget _heroChip(IconData icon, String label) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.bgDeep.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.line),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: AppColors.goldLight),
-          const SizedBox(width: 12),
-          Text(label,
-              style: const TextStyle(color: AppColors.muted, fontSize: 12.5)),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              value,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600),
+          Icon(icon, size: 12, color: AppColors.goldLight),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.goldLight,
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _actionRow(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    bool danger = false,
-    required VoidCallback onTap,
-  }) {
-    final color = danger ? AppColors.danger : AppColors.goldLight;
+// ─────────────────────────────────────────────── Personal Details Grid
+class _PersonalDetailsCard extends StatelessWidget {
+  final StudentUser? user;
+  const _PersonalDetailsCard({required this.user});
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 11),
-        padding: const EdgeInsets.all(15),
+  @override
+  Widget build(BuildContext context) {
+    final email = user?.email;
+    final phone = user?.phone;
+    final address = user?.address;
+    final bloodGroup = user?.bloodGroup;
+    final session = user?.session;
+    final dob = user?.dateOfBirth;
+
+    final items = [
+      if (phone != null && phone.isNotEmpty)
+        _DetailGridItem(Icons.phone_outlined, 'Phone', phone),
+      if (email != null && email.isNotEmpty)
+        _DetailGridItem(Icons.email_outlined, 'Email', email),
+      if (dob != null && dob.isNotEmpty)
+        _DetailGridItem(Icons.cake_outlined, 'Date of Birth', dob),
+      if (bloodGroup != null && bloodGroup.isNotEmpty)
+        _DetailGridItem(Icons.bloodtype_outlined, 'Blood Group', bloodGroup),
+      if (session != null && session.isNotEmpty)
+        _DetailGridItem(Icons.event_note_outlined, 'Session', session),
+      if (address != null && address.isNotEmpty)
+        _DetailGridItem(Icons.home_outlined, 'Address', address, isFullWidth: true),
+    ];
+
+    if (items.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.line),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
+        child: const Text(
+          'No additional details provided.',
+          style: TextStyle(color: AppColors.muted, fontSize: 13),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final halfWidth = (constraints.maxWidth - 10) / 2;
+
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: items.map((item) {
+            final width = item.isFullWidth ? constraints.maxWidth : halfWidth;
+
+            return Container(
+              width: width,
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.line),
               ),
-              child: Icon(icon, size: 19, color: color),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Icon(
+                          item.icon,
+                          size: 15,
+                          color: AppColors.goldLight,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 13.5,
+                    item.value,
+                    maxLines: item.isFullWidth ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.cream,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: danger ? AppColors.danger : AppColors.cream,
                     ),
                   ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        style: const TextStyle(
-                            color: AppColors.muted, fontSize: 11)),
-                  ],
                 ],
               ),
-            ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.muted, size: 20),
-          ],
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+class _DetailGridItem {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool isFullWidth;
+  _DetailGridItem(this.icon, this.label, this.value, {this.isFullWidth = false});
+}
+
+// ─────────────────────────────────────────────── Section Header
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 2),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: AppColors.gold,
+          letterSpacing: 0.8,
         ),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────── Action Card Group
+class _ActionCardGroup extends StatelessWidget {
+  final List<Widget> children;
+  const _ActionCardGroup({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Action Tile
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool danger;
+  final bool isLast;
+
+  const _ActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.danger = false,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = danger ? AppColors.danger : AppColors.goldLight;
+    final iconBg = danger
+        ? AppColors.danger.withValues(alpha: 0.12)
+        : AppColors.gold.withValues(alpha: 0.12);
+
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, size: 19, color: iconColor),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: danger ? AppColors.danger : AppColors.cream,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: danger
+                        ? AppColors.danger.withValues(alpha: 0.7)
+                        : AppColors.muted.withValues(alpha: 0.7),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (!isLast)
+          const Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColors.line,
+            indent: 64,
+            endIndent: 16,
+          ),
+      ],
+    );
+  }
+}
+

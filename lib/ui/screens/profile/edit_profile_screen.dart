@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/app_toast.dart';
 
 /// Edit the fields `POST /auth/student/profile` accepts: name, email,
 /// phone, address, date_of_birth, gender, blood_group, and photo.
@@ -75,12 +76,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not pick image: $e'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
+      AppToast.showError(context, 'Could not pick image: $e');
     }
   }
 
@@ -123,18 +119,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (!mounted) return;
 
     if (ok) {
-      final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).pop();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
+      AppToast.showSuccess(context, 'Profile updated successfully');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(auth.error ?? 'Could not update profile'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
+      AppToast.showError(context, auth.error ?? 'Could not update profile');
     }
   }
 
@@ -148,150 +136,230 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 40),
           children: [
+            // Avatar Upload Picker Card
             Center(
-              child: Stack(
+              child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 46,
-                    backgroundColor: AppColors.gold.withAlpha(38),
-                    backgroundImage: _selectedPhotoPath != null
-                        ? FileImage(File(_selectedPhotoPath!))
-                        : (user?.profilePhotoUrl != null &&
-                                user!.profilePhotoUrl!.isNotEmpty
-                            ? NetworkImage(user.profilePhotoUrl!)
-                                as ImageProvider
-                            : null),
-                    child: (_selectedPhotoPath == null &&
-                            (user?.profilePhotoUrl == null ||
-                                user!.profilePhotoUrl!.isEmpty))
-                        ? const Icon(Icons.person_rounded,
-                            size: 48, color: AppColors.gold)
-                        : null,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: InkWell(
-                      onTap: _pickPhoto,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(3.5),
                         decoration: BoxDecoration(
-                          color: AppColors.gold,
+                          gradient: AppColors.goldGradient,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.black, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.gold.withValues(alpha: 0.22),
+                              blurRadius: 20,
+                              spreadRadius: 2,
+                            ),
+                          ],
                         ),
-                        child: const Icon(
-                          Icons.camera_alt_rounded,
-                          size: 16,
-                          color: Colors.black,
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: AppColors.surface,
+                          backgroundImage: _selectedPhotoPath != null
+                              ? FileImage(File(_selectedPhotoPath!))
+                              : (user?.profilePhotoUrl != null &&
+                                      user!.profilePhotoUrl!.isNotEmpty
+                                  ? NetworkImage(user.profilePhotoUrl!)
+                                      as ImageProvider
+                                  : null),
+                          child: (_selectedPhotoPath == null &&
+                                  (user?.profilePhotoUrl == null ||
+                                      user!.profilePhotoUrl!.isEmpty))
+                              ? const Icon(
+                                  Icons.person_rounded,
+                                  size: 50,
+                                  color: AppColors.gold,
+                                )
+                              : null,
                         ),
                       ),
+                      Positioned(
+                        bottom: 2,
+                        right: 2,
+                        child: InkWell(
+                          onTap: _pickPhoto,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.gold,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppColors.bgDeep,
+                                width: 2.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 6,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt_rounded,
+                              size: 16,
+                              color: Color(0xFF231600),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Tap camera icon to change profile photo',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            TextFormField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Full Name'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Name is required' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email Address'),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Email is required';
-                if (!v.contains('@')) return 'Enter a valid email';
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Phone'),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _addressController,
-              maxLines: 2,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                alignLabelWithHint: true,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _dobController,
-              readOnly: true,
-              onTap: _pickDate,
-              decoration: const InputDecoration(
-                labelText: 'Date of Birth',
-                hintText: 'YYYY-MM-DD',
-                suffixIcon: Icon(Icons.calendar_today_rounded,
-                    size: 18, color: AppColors.muted),
-              ),
-            ),
-            const SizedBox(height: 18),
-            const _FieldLabel('Gender'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 9,
-              children: _genders.map((g) {
-                final selected = _gender == g;
-                return ChoiceChip(
-                  label: Text(g[0].toUpperCase() + g.substring(1)),
-                  selected: selected,
-                  onSelected: (_) => setState(() => _gender = g),
-                  backgroundColor: AppColors.surface,
-                  selectedColor: AppColors.gold,
-                  side: const BorderSide(color: AppColors.line),
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color:
-                        selected ? const Color(0xFF231600) : AppColors.muted,
+            const SizedBox(height: 24),
+
+            // Section 1: Basic Information
+            const _FormSectionHeader(title: 'BASIC INFORMATION'),
+            const SizedBox(height: 10),
+            _FormContainer(
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 18),
-            const _FieldLabel('Blood Group'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _bloodGroups.map((b) {
-                final selected = _bloodGroup == b;
-                return ChoiceChip(
-                  label: Text(b),
-                  selected: selected,
-                  // Tapping the selected chip clears it, so a student can
-                  // undo a mis-tap without leaving the screen.
-                  onSelected: (_) =>
-                      setState(() => _bloodGroup = selected ? null : b),
-                  backgroundColor: AppColors.surface,
-                  selectedColor: AppColors.gold,
-                  side: const BorderSide(color: AppColors.line),
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color:
-                        selected ? const Color(0xFF231600) : AppColors.muted,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email Address',
+                    prefixIcon: Icon(Icons.email_outlined, size: 20),
                   ),
-                );
-              }).toList(),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Email is required';
+                    if (!v.contains('@')) return 'Enter a valid email';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    prefixIcon: Icon(Icons.phone_outlined, size: 20),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
+
+            // Section 2: Address & Date of Birth
+            const _FormSectionHeader(title: 'PERSONAL & ADDRESS'),
+            const SizedBox(height: 10),
+            _FormContainer(
+              children: [
+                TextFormField(
+                  controller: _addressController,
+                  maxLines: 2,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Address',
+                    prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _dobController,
+                  readOnly: true,
+                  onTap: _pickDate,
+                  decoration: const InputDecoration(
+                    labelText: 'Date of Birth',
+                    hintText: 'YYYY-MM-DD',
+                    prefixIcon: Icon(Icons.cake_outlined, size: 20),
+                    suffixIcon: Icon(
+                      Icons.calendar_today_rounded,
+                      size: 18,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Section 3: Additional Options
+            const _FormSectionHeader(title: 'ADDITIONAL DETAILS'),
+            const SizedBox(height: 10),
+            _FormContainer(
+              children: [
+                const _FieldLabel('Gender'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 9,
+                  children: _genders.map((g) {
+                    final selected = _gender == g;
+                    return ChoiceChip(
+                      label: Text(g[0].toUpperCase() + g.substring(1)),
+                      selected: selected,
+                      onSelected: (_) => setState(() => _gender = g),
+                      backgroundColor: AppColors.bgDeep,
+                      selectedColor: AppColors.gold,
+                      side: const BorderSide(color: AppColors.line),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: selected
+                            ? const Color(0xFF231600)
+                            : AppColors.muted,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 18),
+                const _FieldLabel('Blood Group'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _bloodGroups.map((b) {
+                    final selected = _bloodGroup == b;
+                    return ChoiceChip(
+                      label: Text(b),
+                      selected: selected,
+                      onSelected: (_) => setState(
+                        () => _bloodGroup = selected ? null : b,
+                      ),
+                      backgroundColor: AppColors.bgDeep,
+                      selectedColor: AppColors.gold,
+                      side: const BorderSide(color: AppColors.line),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: selected
+                            ? const Color(0xFF231600)
+                            : AppColors.muted,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 30),
+
             AppButton(
               label: 'Save Changes',
               loading: auth.busy,
@@ -299,6 +367,48 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FormSectionHeader extends StatelessWidget {
+  final String title;
+  const _FormSectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 2),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: AppColors.gold,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _FormContainer extends StatelessWidget {
+  final List<Widget> children;
+  const _FormContainer({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
       ),
     );
   }
@@ -320,3 +430,4 @@ class _FieldLabel extends StatelessWidget {
     );
   }
 }
+

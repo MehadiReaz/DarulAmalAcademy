@@ -72,6 +72,22 @@ class AppTheme {
       dividerColor: AppColors.line,
       progressIndicatorTheme:
           const ProgressIndicatorThemeData(color: AppColors.gold),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.surfaceAlt,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.line, width: 1),
+        ),
+        contentTextStyle: const TextStyle(
+          color: AppColors.cream,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+        ),
+        actionTextColor: AppColors.gold,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
     );
   }
 }

@@ -62,12 +62,15 @@ class AuthProvider extends BaseProvider {
 
   // ------------------------------------------------------------- bootstrap
 
-  /// Called once at app start. Restores the token, shows the cached profile
-  /// immediately, then silently revalidates against the server.
+  /// Called once at app start. Restores the token, holds the splash screen
+  /// for at least 2 seconds, then transitions to login or app shell.
   Future<void> bootstrap() async {
+    final splashTimer = Future.delayed(const Duration(seconds: 2));
+
     final token = await _storage.readToken();
 
     if (token == null || token.isEmpty) {
+      await splashTimer;
       _status = AuthStatus.unauthenticated;
       safeNotify();
       return;
@@ -75,19 +78,18 @@ class AuthProvider extends BaseProvider {
 
     _client.setToken(token);
 
-    // Show cached user right away so the app doesn't flash a spinner.
     final cached = await _storage.readUser();
     if (cached != null) {
       _user = StudentUser.fromJson(cached);
-      _status = AuthStatus.authenticated;
-      safeNotify();
     }
 
-    // Revalidate. A 401 here triggers _handleUnauthorized via the interceptor.
+    await splashTimer;
+    _status = AuthStatus.authenticated;
+    safeNotify();
+
+    // Revalidate in background after splash navigation
     try {
       final fresh = await _repo.profile();
-      // Merge rather than replace so a field the profile endpoint happens
-      // not to return can never wipe a good cached value.
       _user = _user == null ? fresh : _user!.mergedWith(fresh);
       _status = AuthStatus.authenticated;
       await _storage.saveUser(_user!.toJson());
@@ -95,8 +97,6 @@ class AuthProvider extends BaseProvider {
       if (e.isUnauthorized) {
         await _clearSession();
       } else if (_user == null) {
-        // Offline with no cache — stay logged in optimistically only if we
-        // have a token; otherwise fall back to login.
         _status = AuthStatus.unauthenticated;
       }
     }
