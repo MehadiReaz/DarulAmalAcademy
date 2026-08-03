@@ -254,6 +254,7 @@ class AuthProvider extends BaseProvider {
 
   Future<bool> updateProfile({
     String? name,
+    String? email,
     String? phone,
     String? address,
     String? dateOfBirth,
@@ -264,9 +265,16 @@ class AuthProvider extends BaseProvider {
     _setBusy(true);
     _error = null;
 
+    final targetEmail = (email != null && email.trim().isNotEmpty)
+        ? email.trim()
+        : _user?.email;
+
     try {
-      final updated = await _repo.updateProfile(
+      // POST /auth/student/profile answers { success, message, data: null },
+      // so the returned user is empty — the follow-up GET is the real read.
+      await _repo.updateProfile(
         name: name,
+        email: targetEmail,
         phone: phone,
         address: address,
         dateOfBirth: dateOfBirth,
@@ -275,13 +283,7 @@ class AuthProvider extends BaseProvider {
         photoPath: photoPath,
       );
 
-      // The update endpoint answers with the FLAT payload, which carries
-      // no phone / address / gender / date_of_birth and no Qur'an data.
-      // Applying it verbatim would blank fields the student can see, so
-      // merge it over what we already hold instead of replacing.
-      final merged = _user == null ? updated : _user!.mergedWith(updated);
-      _user = merged;
-      await _storage.saveUser(merged.toJson());
+      await reloadProfile();
       return true;
     } on ApiException catch (e) {
       _error = e.message;

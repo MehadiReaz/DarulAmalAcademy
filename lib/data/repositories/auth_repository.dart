@@ -1,5 +1,6 @@
+import 'package:darul_amal/core/log/log_hadler.dart';
 import 'package:dio/dio.dart';
-
+import 'package:http_parser/http_parser.dart';
 import '../../core/constants/api_endpoints.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/json_utils.dart';
@@ -32,12 +33,12 @@ class OtpSendResult {
   });
 
   factory OtpSendResult.fromJson(Map<String, dynamic> json) => OtpSendResult(
-        phone: asString(json['phone']),
-        expiresIn: asInt(json['expires_in']),
-        cooldown: asInt(json['cooldown']),
-        driver: asStringOrNull(json['driver']),
-        devOtp: asStringOrNull(json['otp']),
-      );
+    phone: asString(json['phone']),
+    expiresIn: asInt(json['expires_in']),
+    cooldown: asInt(json['cooldown']),
+    driver: asStringOrNull(json['driver']),
+    devOtp: asStringOrNull(json['otp']),
+  );
 }
 
 /// Result of POST /auth/verify-otp
@@ -106,12 +107,14 @@ class AuthRepository {
     return StudentUser.fromJson(asMap(map['user']) ?? map);
   }
 
-  /// PUT /auth/student/profile  ->  { user }
+  /// POST /auth/student/profile  ->  { user }
   ///
-  /// When [photoPath] is given we must POST with `_method: PUT`, because
-  /// PHP does not populate multipart bodies on real PUT requests.
+  /// The photo goes in `files[]` and nowhere else. A MultipartFile wraps a
+  /// single-subscription stream, so putting one instance under several keys
+  /// throws "already finalized" partway through the upload.
   Future<StudentUser> updateProfile({
     String? name,
+    String? email,
     String? phone,
     String? address,
     String? dateOfBirth,
@@ -119,33 +122,63 @@ class AuthRepository {
     String? bloodGroup,
     String? photoPath,
   }) async {
-    final fields = <String, dynamic>{};
+    final formMap = <String, dynamic>{};
     void put(String key, String? value) {
-      if (value != null && value.trim().isNotEmpty) fields[key] = value.trim();
+      if (value != null && value.trim().isNotEmpty) formMap[key] = value.trim();
     }
 
     put('name', name);
+    put('email', email);
     put('phone', phone);
     put('address', address);
     put('date_of_birth', dateOfBirth);
     put('gender', gender);
     put('blood_group', bloodGroup);
 
-    dynamic data;
-
     if (photoPath != null && photoPath.isNotEmpty) {
-      final form = FormData.fromMap({
-        ...fields,
-        '_method': 'PUT',
-        'photo': await MultipartFile.fromFile(photoPath),
-      });
-      data = await _client.postMultipart(ApiEndpoints.studentProfile, form);
-    } else {
-      data = await _client.put(ApiEndpoints.studentProfile, body: fields);
+      formMap['avatar'] = await MultipartFile.fromFile(
+        photoPath,
+        contentType: _imageMediaType(photoPath),
+      );
     }
+
+    final form = FormData.fromMap(formMap);
+
+    // Postman's form-data key was `files`; FormData.fromMap may encode a
+    // list value as `files[]`, and PHP treats those as different keys.
+    // If this logs `files[]` and the upload is ignored, assign the
+    // MultipartFile directly instead of wrapping it in a list above.
+    logger.i(
+      '[API] multipart fields=${form.fields.map((e) => e.key).toList()} '
+      'files=${form.files.map((e) => e.key).toList()}',
+    );
+
+    final data = await _client.postMultipart(ApiEndpoints.studentProfile, form);
 
     final map = asMap(data) ?? {};
     return StudentUser.fromJson(asMap(map['user']) ?? map);
+  }
+
+  /// `fromFile` labels every part `application/octet-stream`. Postman sends
+  /// the real image type, so a backend reading `getClientMimeType()` would
+  /// see a mismatch between the two. Returns null for unknown extensions,
+  /// which restores Dio's default.
+  MediaType? _imageMediaType(String path) {
+    final name = path.split(RegExp(r'[\\/]')).last;
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return null;
+
+    const known = {
+      'jpg': 'jpeg',
+      'jpeg': 'jpeg',
+      'png': 'png',
+      'gif': 'gif',
+      'webp': 'webp',
+      'bmp': 'bmp',
+      'heic': 'heic',
+    };
+    final sub = known[name.substring(dot + 1).toLowerCase()];
+    return sub == null ? null : MediaType('image', sub);
   }
 
   /// POST /auth/refresh -> issues a NEW Sanctum token (requires a valid one).
@@ -181,14 +214,17 @@ class AuthRepository {
     required String password,
     required String passwordConfirmation,
   }) async {
-    await _client.post(ApiEndpoints.resetPassword, body: {
-      'email_or_phone': emailOrPhone,
-      'phone': emailOrPhone,
-      'token': token,
-      'otp': token,
-      'code': token,
-      'password': password,
-      'password_confirmation': passwordConfirmation,
-    });
+    await _client.post(
+      ApiEndpoints.resetPassword,
+      body: {
+        'email_or_phone': emailOrPhone,
+        'phone': emailOrPhone,
+        'token': token,
+        'otp': token,
+        'code': token,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      },
+    );
   }
 }

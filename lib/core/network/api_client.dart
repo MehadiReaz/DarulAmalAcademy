@@ -80,6 +80,7 @@ class ApiClient {
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     try {
+      logger.i('Authorization: Bearer $_token');
       final res = await _dio.get(path, queryParameters: query);
       logger.i('[API] Response: ${res.data}');
       return _unwrap(res.data);
@@ -208,10 +209,18 @@ class ApiClient {
   /// chance. Stating it here means PHP always populates `$_FILES`.
   Future<dynamic> postMultipart(String path, FormData form) async {
     try {
-      final res = await _dio.post(
+      final options = Options(
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null && _token!.isNotEmpty)
+            'Authorization': 'Bearer $_token',
+        },
+      );
+      final res = await _dio.request(
         path,
         data: form,
-        options: Options(contentType: Headers.multipartFormDataContentType),
+        options: options,
       );
       logger.i('[API] Response: ${res.data}');
       return _unwrap(res.data);
@@ -300,7 +309,8 @@ class BinaryResponse {
         bytes[0] == 0x25 && // %
         bytes[1] == 0x50 && // P
         bytes[2] == 0x44 && // D
-        bytes[3] == 0x46) { // F
+        bytes[3] == 0x46) {
+      // F
       return true;
     }
     return (contentType ?? '').contains('application/pdf') ||

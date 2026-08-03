@@ -85,7 +85,12 @@ class StudentUser {
       name: asString(json['name'], fallback: 'Student'),
       email: asStringOrNull(json['email']),
       role: asStringOrNull(json['role']),
-      profilePhotoUrl: asStringOrNull(json['profile_photo_url']),
+      profilePhotoUrl: asStringOrNull(json['profile_photo_url']) ??
+          asStringOrNull(json['avatar']) ??
+          asStringOrNull(json['photo']) ??
+          asStringOrNull(profile['profile_photo_url']) ??
+          asStringOrNull(profile['avatar']) ??
+          asStringOrNull(profile['photo']),
       phone: asStringOrNull(json['phone']),
       address: asStringOrNull(json['address']),
       gender: asStringOrNull(json['gender']),
