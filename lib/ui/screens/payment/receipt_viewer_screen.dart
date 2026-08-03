@@ -7,6 +7,7 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../widgets/state_views.dart';
 
 /// Renders a receipt PDF fetched from `GET /student/fees/receipt/{id}`.
 class ReceiptViewerScreen extends StatefulWidget {
@@ -25,12 +26,31 @@ class ReceiptViewerScreen extends StatefulWidget {
 
 class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
   bool _saving = false;
+  bool _ready = false;
+  late final PdfViewerController _pdfViewerController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pdfViewerController = PdfViewerController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _ready = true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pdfViewerController.dispose();
+    super.dispose();
+  }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
       final name = widget.receipt.safeFilename(fallback: 'receipt.pdf');
-      
+
       String? savedPath;
       bool usedFilePicker = false;
       try {
@@ -45,7 +65,6 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
       }
 
       if (usedFilePicker) {
-        // FilePicker writes bytes natively to Android SAF / iOS documents
         if (savedPath != null && savedPath.isNotEmpty) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -57,7 +76,8 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
 
       Directory? targetDir;
       if (Platform.isAndroid) {
-        final extDirs = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+        final extDirs = await getExternalStorageDirectories(
+            type: StorageDirectory.downloads);
         if (extDirs != null && extDirs.isNotEmpty) {
           targetDir = extDirs.first;
         } else {
@@ -66,7 +86,8 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
       } else if (Platform.isIOS) {
         targetDir = await getApplicationDocumentsDirectory();
       } else {
-        targetDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+        targetDir = await getDownloadsDirectory() ??
+            await getApplicationDocumentsDirectory();
       }
 
       targetDir ??= await getApplicationDocumentsDirectory();
@@ -115,21 +136,32 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
           ),
         ],
       ),
-      body: SizedBox.expand(
-        child: SfPdfViewer.memory(
-          widget.receipt.bytes,
-          canShowScrollHead: true,
-          canShowScrollStatus: true,
-          onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to load PDF: ${details.description}'),
-                backgroundColor: AppColors.danger,
-              ),
-            );
-          },
-        ),
-      ),
+      body: !_ready
+          ? const LoadingView(message: 'Opening PDF receipt…')
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth <= 0 || constraints.maxHeight <= 0) {
+                  return const LoadingView(message: 'Preparing PDF viewer…');
+                }
+                return SfPdfViewer.memory(
+                  widget.receipt.bytes,
+                  key: ValueKey(widget.receipt.bytes.length),
+                  controller: _pdfViewerController,
+                  canShowScrollHead: true,
+                  canShowScrollStatus: true,
+                  onDocumentLoadFailed:
+                      (PdfDocumentLoadFailedDetails details) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            'Failed to load PDF: ${details.description}'),
+                        backgroundColor: AppColors.danger,
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 }

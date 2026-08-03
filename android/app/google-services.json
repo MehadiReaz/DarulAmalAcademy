@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "937991087810",
+    "project_id": "madrasha-project-96daf",
+    "storage_bucket": "madrasha-project-96daf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:937991087810:android:64b715600a99642c07fd5b",
+        "android_client_info": {
+          "package_name": "com.darulamal.student.app.darul_amal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCj0qeHVssGg8mPdMQ-UtPkMIiuc7ph-2o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

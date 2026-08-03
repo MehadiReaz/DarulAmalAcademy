@@ -3,16 +3,20 @@ import 'package:flutter/services.dart';
 
 import 'app.dart';
 import 'core/network/api_client.dart';
+import 'core/services/fcm_service.dart';
 import 'core/storage/read_state_storage.dart';
 import 'core/storage/token_storage.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  SystemChrome.setPreferredOrientations([
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Initialize Firebase & Push Notification Service
+  await FcmService.initialize();
 
   // Single ApiClient + storage instances for the whole app.
   final client = ApiClient();

@@ -13,6 +13,7 @@ import '../../../providers/shell_provider.dart';
 import '../attendance/attendance_screen.dart';
 import '../batches/my_batches_screen.dart';
 import '../courses/my_courses_screen.dart';
+import '../homework/homework_detail_screen.dart';
 import '../homework/homework_tab.dart';
 import '../lessons/lessons_screen.dart';
 import '../notices/notice_tab.dart';
@@ -593,16 +594,29 @@ class _NextAssignmentsList extends StatelessWidget {
           return Container(
             width: 240,
             margin: const EdgeInsets.only(right: 12),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
+            child: Material(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          HomeworkDetailScreen(homeworkId: item.id),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.line),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -682,8 +696,11 @@ class _NextAssignmentsList extends StatelessWidget {
                 ),
               ],
             ),
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  },
       ),
     );
   }
