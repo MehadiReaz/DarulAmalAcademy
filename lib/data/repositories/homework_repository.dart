@@ -43,7 +43,9 @@ class HomeworkRepository {
   HomeworkRepository(this._client);
 
   /// GET /student/homework
-  Future<List<Homework>> list({HomeworkFilter filter = HomeworkFilter.all}) async {
+  Future<List<Homework>> list({
+    HomeworkFilter filter = HomeworkFilter.all,
+  }) async {
     final status = filter.value;
     final data = await _client.get(
       ApiEndpoints.homework,
@@ -108,7 +110,8 @@ class HomeworkRepository {
   Future<HomeworkDetail> detail(int id) async {
     final data = await _client.get(ApiEndpoints.homeworkDetail(id));
     final map = asMap(data) ?? {};
-    final unwrapped = asMap(map['assignment']) ??
+    final unwrapped =
+        asMap(map['assignment']) ??
         asMap(map['homework']) ??
         asMap(map['data']) ??
         map;
@@ -138,7 +141,7 @@ class HomeworkRepository {
     if (hasAudio) {
       final form = FormData.fromMap({
         if (hasText) 'text': trimmed,
-        'attachment': await MultipartFile.fromFile(audioPath),
+        'file': await MultipartFile.fromFile(audioPath),
       });
       await _client.postMultipart(ApiEndpoints.homeworkSubmit(id), form);
       return;
