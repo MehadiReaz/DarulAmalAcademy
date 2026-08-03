@@ -76,7 +76,9 @@ class _HomeTabState extends State<HomeTab> {
                 // on this line and blanked the whole Home tab.
                 profileImage: user?.profilePhotoUrl,
                 onBellTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -512,10 +514,7 @@ class _QuickActionsGrid extends StatelessWidget {
   /// notification centre, so unread notices surface here instead.
   final int unreadNotices;
 
-  const _QuickActionsGrid({
-    this.pendingHomework = 0,
-    this.unreadNotices = 0,
-  });
+  const _QuickActionsGrid({this.pendingHomework = 0, this.unreadNotices = 0});
 
   @override
   Widget build(BuildContext context) {

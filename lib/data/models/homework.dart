@@ -147,9 +147,11 @@ class HomeworkSubmission {
 
   factory HomeworkSubmission.fromJson(Map<String, dynamic> json) =>
       HomeworkSubmission(
-        submittedAt: asDate(json['submitted_at']),
-        text: asStringOrNull(json['submitted_text']),
-        audioUrl: asStringOrNull(json['submitted_audio']),
+        submittedAt: asDate(json['submitted_at']) ?? asDate(json['created_at']),
+        text: asStringOrNull(json['submitted_text']) ?? asStringOrNull(json['description']),
+        audioUrl: asStringOrNull(json['assignment_url']) ??
+            asStringOrNull(json['submitted_audio']) ??
+            asStringOrNull(json['assignment']),
       );
 }
 
@@ -195,10 +197,18 @@ class HomeworkDetail {
         asStringOrNull(json['status']) ??
         asStringOrNull(json['assignment_status']);
 
+    dynamic rawHistory = json['submission_history'] ??
+        json['history'] ??
+        (asMap(json['submissions_list'])?['data']) ??
+        json['submissions_list'];
+    final historyList = asList(rawHistory, HomeworkSubmission.fromJson);
+
     final submittedDone = asBool(json['submitted_done']);
     final submissions = asDouble(json['submissions']);
-    final historyList = asList(json['submission_history'], HomeworkSubmission.fromJson);
-    final hasSubmittedContent = json['submitted_text'] != null || json['submitted_audio'] != null;
+    final subAudio = asStringOrNull(json['submitted_audio']) ??
+        asStringOrNull(json['assignment_url']) ??
+        (historyList.isNotEmpty ? historyList.first.audioUrl : null);
+    final hasSubmittedContent = json['submitted_text'] != null || subAudio != null;
     final isSubmittedFlag = asBool(json['is_submitted']) || asBool(json['submitted']);
 
     final isSub = submittedDone ||
@@ -230,12 +240,13 @@ class HomeworkDetail {
           asStringOrNull(json['end_date']) ??
           asStringOrNull(json['deadline']),
       submissionStatus: isSub ? 'submitted' : 'pending',
-      submittedText: asStringOrNull(json['submitted_text']),
-      submittedAudio: asStringOrNull(json['submitted_audio']),
+      submittedText: asStringOrNull(json['submitted_text']) ??
+          (historyList.isNotEmpty ? historyList.first.text : null),
+      submittedAudio: subAudio,
       marks: markVal?.toString(),
       teacherRemarks: asStringOrNull(json['teacher_remarks']),
       attachments: _parseAttachments(json['attachments']),
-      history: asList(json['submission_history'], HomeworkSubmission.fromJson),
+      history: historyList,
     );
   }
 

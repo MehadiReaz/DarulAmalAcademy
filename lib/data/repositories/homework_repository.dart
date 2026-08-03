@@ -110,12 +110,18 @@ class HomeworkRepository {
   Future<HomeworkDetail> detail(int id) async {
     final data = await _client.get(ApiEndpoints.homeworkDetail(id));
     final map = asMap(data) ?? {};
-    final unwrapped =
-        asMap(map['assignment']) ??
-        asMap(map['homework']) ??
-        asMap(map['data']) ??
-        map;
-    return HomeworkDetail.fromJson(unwrapped);
+    final assignmentMap = asMap(map['assignment']) ?? asMap(map['homework']) ?? {};
+    final merged = Map<String, dynamic>.from(
+      assignmentMap.isNotEmpty ? assignmentMap : (asMap(map['data']) ?? map),
+    );
+
+    if (map.containsKey('submissions_list')) {
+      merged['submissions_list'] = map['submissions_list'];
+    }
+    if (map.containsKey('submissions')) {
+      merged['submissions'] = map['submissions'];
+    }
+    return HomeworkDetail.fromJson(merged);
   }
 
   /// POST /student/homework/{id}/submit

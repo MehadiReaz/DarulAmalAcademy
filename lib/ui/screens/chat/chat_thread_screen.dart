@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
@@ -17,8 +20,8 @@ import '../../widgets/state_views.dart';
 /// A single group thread: `GET/POST /group-chats/{id}/messages` plus
 /// `GET /group-chats/{id}/search`.
 ///
-/// Supports text and image/pdf attachments (max 15MB), with inline previews
-/// and an upload overlay driven by `ChatMessage.uploadProgress`.
+/// Supports text, image, pdf, and WhatsApp-style voice note audio recording
+/// and playback.
 class ChatThreadScreen extends StatefulWidget {
   const ChatThreadScreen({super.key});
 
@@ -39,24 +42,242 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _didInitialScroll = false;
   int _lastMessageCount = 0;
 
+  // WhatsApp Voice Recording Handles & State
+  late final AudioRecorder _audioRecorder;
+  late final AudioPlayer _audioPlayer;
+  StreamSubscription? _playerCompleteSub;
+  StreamSubscription? _playerPositionSub;
+  StreamSubscription? _playerDurationSub;
+
+  bool _isRecordingVoice = false;
+  bool _isReviewingVoice = false;
+  Timer? _voiceRecordTimer;
+  int _voiceRecordSeconds = 0;
+  int _voicePlaybackSeconds = 0;
+  bool _isPlayingVoicePreview = false;
+  String? _voiceTempPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioRecorder = AudioRecorder();
+    _audioPlayer = AudioPlayer();
+
+    _input.addListener(_onInputChanged);
+
+    _playerCompleteSub = _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _isPlayingVoicePreview = false;
+          _voicePlaybackSeconds = 0;
+        });
+      }
+    });
+
+    _playerPositionSub = _audioPlayer.onPositionChanged.listen((pos) {
+      if (mounted && _isReviewingVoice) {
+        setState(() {
+          _voicePlaybackSeconds = pos.inSeconds;
+        });
+      }
+    });
+
+    _playerDurationSub = _audioPlayer.onDurationChanged.listen((dur) {
+      if (mounted && dur.inSeconds > 0) {
+        setState(() {
+          _voiceRecordSeconds = dur.inSeconds;
+        });
+      }
+    });
+  }
+
+  void _onInputChanged() {
+    setState(() {});
+  }
+
   @override
   void dispose() {
+    _input.removeListener(_onInputChanged);
     _input.dispose();
     _searchInput.dispose();
     _scroll.dispose();
+    _voiceRecordTimer?.cancel();
+    _playerCompleteSub?.cancel();
+    _playerPositionSub?.cancel();
+    _playerDurationSub?.cancel();
+    _audioPlayer.dispose();
+    _audioRecorder.dispose();
     super.dispose();
+  }
+
+  String _fmtSeconds(int totalSec) {
+    final m = (totalSec ~/ 60).toString().padLeft(2, '0');
+    final s = (totalSec % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Microphone permission required for voice notes.'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+        return;
+      }
+
+      await _audioPlayer.stop();
+      _voiceRecordTimer?.cancel();
+
+      final tempDir = await getTemporaryDirectory();
+      final path =
+          '${tempDir.path}/voice_note_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      await _audioRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+
+      setState(() {
+        _isRecordingVoice = true;
+        _isReviewingVoice = false;
+        _voiceRecordSeconds = 0;
+        _voicePlaybackSeconds = 0;
+        _isPlayingVoicePreview = false;
+        _voiceTempPath = path;
+      });
+
+      _voiceRecordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted) {
+          setState(() => _voiceRecordSeconds++);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not start voice recording: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    _voiceRecordTimer?.cancel();
+    try {
+      if (await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+      }
+      await _audioPlayer.stop();
+    } catch (_) {}
+
+    setState(() {
+      _isRecordingVoice = false;
+      _isReviewingVoice = false;
+      _voiceRecordSeconds = 0;
+      _voicePlaybackSeconds = 0;
+      _isPlayingVoicePreview = false;
+      _voiceTempPath = null;
+    });
+  }
+
+  Future<void> _stopVoiceRecordingAndReview() async {
+    _voiceRecordTimer?.cancel();
+    String? path;
+    try {
+      path = await _audioRecorder.stop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error stopping recording: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    final finalPath = path ?? _voiceTempPath;
+    if (finalPath == null || !File(finalPath).existsSync()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Recording failed. Please try again.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      _cancelVoiceRecording();
+      return;
+    }
+
+    final sec = _voiceRecordSeconds == 0 ? 1 : _voiceRecordSeconds;
+
+    setState(() {
+      _voiceTempPath = finalPath;
+      _voiceRecordSeconds = sec;
+      _voicePlaybackSeconds = 0;
+      _isPlayingVoicePreview = false;
+      _isRecordingVoice = false;
+      _isReviewingVoice = true;
+    });
+  }
+
+  Future<void> _toggleVoicePreview() async {
+    if (_isPlayingVoicePreview) {
+      await _audioPlayer.pause();
+      setState(() => _isPlayingVoicePreview = false);
+    } else {
+      if (_voiceTempPath != null && File(_voiceTempPath!).existsSync()) {
+        if (_voicePlaybackSeconds >= _voiceRecordSeconds) {
+          _voicePlaybackSeconds = 0;
+        }
+        await _audioPlayer.play(DeviceFileSource(_voiceTempPath!));
+        setState(() => _isPlayingVoicePreview = true);
+      }
+    }
+  }
+
+  Future<void> _sendVoiceRecording() async {
+    String? finalPath = _voiceTempPath;
+    if (_isRecordingVoice) {
+      _voiceRecordTimer?.cancel();
+      try {
+        finalPath = await _audioRecorder.stop() ?? _voiceTempPath;
+      } catch (_) {}
+    }
+
+    if (finalPath == null || !File(finalPath).existsSync()) {
+      _cancelVoiceRecording();
+      return;
+    }
+
+    await _audioPlayer.stop();
+
+    setState(() {
+      _selectedFilePath = finalPath;
+      _selectedFileName =
+          'Voice_Note_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      _selectedFileSize = File(finalPath!).lengthSync();
+      _isRecordingVoice = false;
+      _isReviewingVoice = false;
+    });
+
+    await _send();
+
+    setState(() {
+      _voiceTempPath = null;
+    });
   }
 
   void _jumpToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
       _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scroll.hasClients) return;
-        if (_scroll.position.pixels < _scroll.position.maxScrollExtent) {
-          _scroll.jumpTo(_scroll.position.maxScrollExtent);
-        }
-      });
     });
   }
 
@@ -83,7 +304,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'],
+        allowedExtensions: [
+          'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'm4a', 'mp3', 'wav',
+        ],
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -102,12 +325,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           }
 
           final ext = file.extension?.toLowerCase() ?? '';
-          const allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'};
+          const allowed = {
+            'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'm4a', 'mp3', 'wav',
+          };
           if (ext.isNotEmpty && !allowed.contains(ext)) {
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Pick an image or a PDF.'),
+                content: Text('Pick an image, PDF, or audio file.'),
                 backgroundColor: AppColors.danger,
               ),
             );
@@ -250,6 +475,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         provider.messages.isEmpty) {
       return const LoadingView();
     }
+
     if (provider.messagesState == LoadState.error &&
         provider.messages.isEmpty) {
       return ErrorView(
@@ -260,11 +486,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         },
       );
     }
+
     if (provider.messages.isEmpty) {
       return const EmptyView(
         icon: Icons.chat_bubble_outline_rounded,
         title: 'No messages yet',
-        subtitle: 'Be the first to say salaam.',
+        subtitle: 'Start the conversation!',
       );
     }
 
@@ -296,7 +523,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             );
           }
           final msg = provider.messages[provider.hasOlder ? i - 1 : i];
-          return _Bubble(
+          return _MessageBubble(
             message: msg,
             mine: msg.isMine(myId),
             onDiscard: msg.failed
@@ -375,7 +602,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _composer(ChatProvider provider) {
+    if (_isRecordingVoice) {
+      return _voiceRecordingComposer(provider);
+    }
+
+    if (_isReviewingVoice) {
+      return _voiceReviewComposer(provider);
+    }
+
     final path = _selectedFilePath;
+    final hasInputText = _input.text.trim().isNotEmpty;
+    final hasAttachment = path != null;
+    final canSendTextOrFile = hasInputText || hasAttachment;
 
     return SafeArea(
       top: false,
@@ -400,14 +638,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       name: _selectedFileName,
                       sizeBytes: _selectedFileSize,
                       onRemove: _clearAttachment,
-                      onTap: () => _openLocalPreview(path, _selectedFileName),
+                      onTap: () {},
                     ),
             ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 IconButton(
-                  tooltip: 'Attach an image or PDF (max 15 MB)',
+                  tooltip: 'Attach file or image',
                   onPressed: provider.sending ? null : _pickAttachment,
                   icon: Icon(
                     Icons.attach_file_rounded,
@@ -437,10 +675,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   width: 44,
                   height: 44,
                   child: FilledButton(
-                    onPressed: provider.sending ? null : _send,
+                    onPressed: provider.sending
+                        ? null
+                        : (canSendTextOrFile ? _send : _startVoiceRecording),
                     style: FilledButton.styleFrom(
                       padding: EdgeInsets.zero,
                       shape: const CircleBorder(),
+                      backgroundColor: canSendTextOrFile
+                          ? AppColors.gold
+                          : AppColors.gold.withValues(alpha: 0.85),
                     ),
                     child: provider.sending
                         ? const SizedBox(
@@ -451,7 +694,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                               color: Color(0xFF231600),
                             ),
                           )
-                        : const Icon(Icons.send_rounded, size: 18),
+                        : Icon(
+                            canSendTextOrFile
+                                ? Icons.send_rounded
+                                : Icons.mic_rounded,
+                            size: 20,
+                            color: const Color(0xFF231600),
+                          ),
                   ),
                 ),
               ],
@@ -462,15 +711,178 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
-  void _openLocalPreview(String path, String? name) {
-    if (attachmentKindOf(name ?? path) != AttachmentKind.image) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => _ImageViewer(
-          image: FileImage(File(path)),
-          title: name ?? attachmentNameOf(path),
-          heroTag: 'staged-$path',
+  Widget _voiceRecordingComposer(ChatProvider provider) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.line)),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Discard voice note',
+              onPressed: _cancelVoiceRecording,
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 22,
+                color: AppColors.danger,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const _PulsingRedDot(),
+            const SizedBox(width: 8),
+            Text(
+              _fmtSeconds(_voiceRecordSeconds),
+              style: const TextStyle(
+                color: AppColors.cream,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _AudioWaveformAnimation(isRecording: true),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Pause & review',
+              onPressed: _stopVoiceRecordingAndReview,
+              icon: const Icon(
+                Icons.pause_circle_outline_rounded,
+                size: 24,
+                color: AppColors.goldLight,
+              ),
+            ),
+            const SizedBox(width: 4),
+            SizedBox(
+              width: 42,
+              height: 42,
+              child: FilledButton(
+                onPressed: provider.sending ? null : _sendVoiceRecording,
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  shape: const CircleBorder(),
+                  backgroundColor: AppColors.gold,
+                ),
+                child: const Icon(
+                  Icons.send_rounded,
+                  size: 18,
+                  color: Color(0xFF231600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _voiceReviewComposer(ChatProvider provider) {
+    final maxSec = _voiceRecordSeconds > 0 ? _voiceRecordSeconds : 1;
+    final currentSec = _voicePlaybackSeconds.clamp(0, maxSec);
+    final progress = currentSec / maxSec;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.line)),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Discard recording',
+              onPressed: _cancelVoiceRecording,
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 22,
+                color: AppColors.danger,
+              ),
+            ),
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: _toggleVoicePreview,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: AppColors.gold,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isPlayingVoicePreview
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 22,
+                  color: const Color(0xFF231600),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _AudioWaveformAnimation(
+                    isRecording: false,
+                    isPlaying: _isPlayingVoicePreview,
+                    progress: progress,
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _fmtSeconds(currentSec),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 10,
+                        ),
+                      ),
+                      Text(
+                        _fmtSeconds(maxSec),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 42,
+              height: 42,
+              child: FilledButton(
+                onPressed: provider.sending ? null : _sendVoiceRecording,
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  shape: const CircleBorder(),
+                  backgroundColor: AppColors.gold,
+                ),
+                child: provider.sending
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF231600),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.send_rounded,
+                        size: 18,
+                        color: Color(0xFF231600),
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -478,7 +890,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 }
 
 /// The chip shown above the input once a file is picked but not yet sent.
-/// Images get a real thumbnail; PDFs get a labelled card.
 class _StagedAttachment extends StatelessWidget {
   final String path;
   final String? name;
@@ -498,67 +909,51 @@ class _StagedAttachment extends StatelessWidget {
   Widget build(BuildContext context) {
     final kind = attachmentKindOf(name ?? path);
     final isImage = kind == AttachmentKind.image;
-    final label = name ?? attachmentNameOf(path);
-    final size = sizeBytes != null
-        ? '${(sizeBytes! / (1024 * 1024)).toStringAsFixed(1)} MB'
-        : null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.line),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
-            onTap: isImage ? onTap : null,
-            child: Hero(
-              tag: 'staged-$path',
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 52,
-                  height: 52,
-                  child: isImage
-                      ? Image.file(
-                          File(path),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const _KindTile(kind: AttachmentKind.file),
-                        )
-                      : _KindTile(kind: kind),
-                ),
-              ),
+            onTap: onTap,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: isImage
+                  ? Image.file(
+                      File(path),
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                    )
+                  : const _KindTile(kind: AttachmentKind.file),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
+          const SizedBox(width: 8),
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  label,
+                  name ?? attachmentNameOf(path),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: AppColors.cream,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
-                  [
-                    isImage
-                        ? 'Image'
-                        : (kind == AttachmentKind.pdf ? 'PDF' : 'File'),
-                    ?size,
-                    if (isImage) 'Tap to preview',
-                  ].join(' · '),
+                  sizeBytes != null
+                      ? '${(sizeBytes! / (1024 * 1024)).toStringAsFixed(1)} MB'
+                      : (kind == AttachmentKind.pdf ? 'PDF' : 'File'),
                   style: const TextStyle(
                     fontSize: 10,
                     color: AppColors.muted,
@@ -567,15 +962,13 @@ class _StagedAttachment extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 6),
           IconButton(
-            tooltip: 'Remove attachment',
+            icon: const Icon(Icons.close_rounded, size: 16),
             onPressed: onRemove,
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(
-              Icons.close_rounded,
-              size: 17,
-              color: AppColors.danger,
-            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            splashRadius: 16,
           ),
         ],
       ),
@@ -583,99 +976,88 @@ class _StagedAttachment extends StatelessWidget {
   }
 }
 
-/// Neutral square used for PDFs and for images that fail to decode.
 class _KindTile extends StatelessWidget {
   final AttachmentKind kind;
   const _KindTile({required this.kind});
 
   @override
   Widget build(BuildContext context) {
+    final isPdf = kind == AttachmentKind.pdf;
+    final isAudio = kind == AttachmentKind.audio;
+
     return Container(
-      color: AppColors.line.withValues(alpha: 0.35),
-      alignment: Alignment.center,
-      child: Icon(
-        kind == AttachmentKind.pdf
-            ? Icons.picture_as_pdf_rounded
-            : Icons.insert_drive_file_rounded,
-        size: 22,
-        color: AppColors.goldLight,
+      width: 44,
+      height: 44,
+      color: isPdf
+          ? AppColors.danger.withValues(alpha: 0.15)
+          : (isAudio
+              ? AppColors.gold.withValues(alpha: 0.15)
+              : AppColors.goldLight.withValues(alpha: 0.15)),
+      child: Center(
+        child: Icon(
+          isPdf
+              ? Icons.picture_as_pdf_rounded
+              : (isAudio ? Icons.mic_rounded : Icons.insert_drive_file_rounded),
+          color: isPdf
+              ? AppColors.danger
+              : (isAudio ? AppColors.gold : AppColors.goldLight),
+          size: 22,
+        ),
       ),
     );
   }
 }
 
-// -----------------------------------------------------------------------------
-// Message bubble
-// -----------------------------------------------------------------------------
-
-class _Bubble extends StatelessWidget {
+/// The bubble containing a message text, attachment, author header, and timestamp.
+class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool mine;
   final VoidCallback? onDiscard;
 
-  const _Bubble({
+  const _MessageBubble({
     required this.message,
     required this.mine,
     this.onDiscard,
   });
 
-  Color get _onBubble =>
-      mine ? const Color(0xFF231600) : AppColors.cream;
+  Color get _onBubble => mine ? const Color(0xFF231600) : AppColors.cream;
+  Color get _bg => mine ? AppColors.gold : AppColors.surface;
 
   @override
   Widget build(BuildContext context) {
-    if (message.isDeleted) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Align(
-          alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-          child: const Text(
-            'This message was deleted',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 11,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ),
-      );
-    }
-
+    final showSender = !mine && message.sender?.name != null;
     final hasText = message.text != null && message.text!.isNotEmpty;
     final showAttachment = message.showsAttachment;
     final kind = message.attachmentKind;
-    final isImage = kind == AttachmentKind.image;
-
-    // An image with no caption gets an edge-to-edge bubble.
-    final tightImage = isImage && showAttachment && !hasText;
+    final tightImage = showAttachment && !hasText && kind == AttachmentKind.image;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment:
             mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!mine && message.sender?.name != null)
+          if (showSender)
             Padding(
               padding: const EdgeInsets.only(left: 6, bottom: 3),
               child: Text(
                 message.sender!.name!,
                 style: const TextStyle(
-                  color: AppColors.goldLight,
-                  fontSize: 10.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
+                  color: AppColors.goldLight,
                 ),
               ),
             ),
           Container(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.74,
+              maxWidth: MediaQuery.of(context).size.width * 0.76,
             ),
             padding: tightImage
-                ? const EdgeInsets.all(4)
-                : const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                ? const EdgeInsets.all(3)
+                : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: mine ? AppColors.gold : AppColors.surface,
+              color: _bg,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(15),
                 topRight: const Radius.circular(15),
@@ -704,17 +1086,12 @@ class _Bubble extends StatelessWidget {
                     ),
                   ),
                 if (hasText)
-                  Padding(
-                    padding: tightImage
-                        ? const EdgeInsets.fromLTRB(9, 0, 9, 5)
-                        : EdgeInsets.zero,
-                    child: Text(
-                      message.text!,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1.45,
-                        color: _onBubble,
-                      ),
+                  Text(
+                    message.text!,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.45,
+                      color: _onBubble,
                     ),
                   ),
               ],
@@ -726,13 +1103,8 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (message.pending)
-                  Text(
-                    _pendingLabel(message),
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 9.5,
-                    ),
-                  )
+                  const Text('Sending…',
+                      style: TextStyle(color: AppColors.muted, fontSize: 9.5))
                 else if (message.failed) ...[
                   const Text('Not sent',
                       style:
@@ -741,28 +1113,17 @@ class _Bubble extends StatelessWidget {
                     const SizedBox(width: 6),
                     GestureDetector(
                       onTap: onDiscard,
-                      child: const Text(
-                        'Dismiss',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 9.5,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
+                      child: const Text('Dismiss',
+                          style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 9.5,
+                              decoration: TextDecoration.underline)),
                     ),
                   ],
                 ] else
-                  Text(
-                    Fmt.ago(message.createdAt),
-                    style:
-                        const TextStyle(color: AppColors.muted, fontSize: 9.5),
-                  ),
-                if (message.isEdited) ...[
-                  const SizedBox(width: 5),
-                  const Text('· edited',
-                      style:
-                          TextStyle(color: AppColors.muted, fontSize: 9.5)),
-                ],
+                  Text(Fmt.ago(message.createdAt),
+                      style: const TextStyle(
+                          color: AppColors.muted, fontSize: 9.5)),
               ],
             ),
           ),
@@ -770,17 +1131,10 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
-
-  String _pendingLabel(ChatMessage m) {
-    if (!m.isUploading) return 'Sending…';
-    final p = m.uploadProgress;
-    if (p == null) return 'Uploading…';
-    return 'Uploading ${(p.clamp(0.0, 1.0) * 100).round()}%';
-  }
 }
 
 /// Renders the attachment inside a bubble: a real thumbnail for images,
-/// a compact card for PDFs, and an upload overlay while the file is in flight.
+/// a compact card for PDFs, a voice player for audio, and an upload overlay while in flight.
 class _AttachmentPreview extends StatelessWidget {
   final String messageId;
   final String? localPath;
@@ -809,7 +1163,9 @@ class _AttachmentPreview extends StatelessWidget {
 
   ImageProvider? get _imageProvider {
     if (localPath != null) return FileImage(File(localPath!));
-    if (remoteUrl != null) return NetworkImage('https://course.nexcoreit4u.com/$remoteUrl');
+    if (remoteUrl != null) {
+      return NetworkImage('https://course.nexcoreit4u.com/$remoteUrl');
+    }
     return null;
   }
 
@@ -851,7 +1207,6 @@ class _AttachmentPreview extends StatelessWidget {
           image: image,
           title: name,
           heroTag: _heroTag,
-          externalUrl: remoteUrl,
         ),
       ),
     );
@@ -859,8 +1214,16 @@ class _AttachmentPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final child =
-        kind == AttachmentKind.image ? _image(context) : _document(context);
+    final child = kind == AttachmentKind.image
+        ? _image(context)
+        : (kind == AttachmentKind.audio
+            ? _VoiceNoteBubblePlayer(
+                localPath: localPath,
+                remoteUrl: remoteUrl,
+                name: name,
+                mine: mine,
+              )
+            : _document(context));
 
     if (!uploading && !failed) return child;
 
@@ -882,7 +1245,6 @@ class _AttachmentPreview extends StatelessWidget {
                       child: CircularProgressIndicator(
                         value: progress,
                         strokeWidth: 2.4,
-                        backgroundColor: Colors.white24,
                         valueColor: const AlwaysStoppedAnimation<Color>(
                           AppColors.goldLight,
                         ),
@@ -897,10 +1259,7 @@ class _AttachmentPreview extends StatelessWidget {
 
   Widget _image(BuildContext context) {
     final image = _imageProvider;
-    if (image == null) return _document(context);
-
     final maxW = MediaQuery.of(context).size.width * 0.66;
-
     return GestureDetector(
       onTap: uploading ? null : () => _openImageViewer(context),
       child: Hero(
@@ -914,47 +1273,7 @@ class _AttachmentPreview extends StatelessWidget {
               maxHeight: 280,
               minHeight: 90,
             ),
-            child: Image(
-              image: image,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-                final value = progress.expectedTotalBytes != null
-                    ? progress.cumulativeBytesLoaded /
-                        progress.expectedTotalBytes!
-                    : null;
-                return _Placeholder(
-                  width: maxW,
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      value: value,
-                      strokeWidth: 2,
-                      color: AppColors.goldLight,
-                    ),
-                  ),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) => _Placeholder(
-                width: maxW,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.broken_image_rounded,
-                        size: 22, color: AppColors.muted),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Preview unavailable',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            child: Image(image: image!, fit: BoxFit.cover),
           ),
         ),
       ),
@@ -963,7 +1282,6 @@ class _AttachmentPreview extends StatelessWidget {
 
   Widget _document(BuildContext context) {
     final isPdf = kind == AttachmentKind.pdf;
-
     return GestureDetector(
       onTap: uploading ? null : () => _openExternally(context),
       child: Container(
@@ -981,24 +1299,23 @@ class _AttachmentPreview extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: mine
-                    ? Colors.black.withValues(alpha: 0.10)
-                    : AppColors.surface,
-                borderRadius: BorderRadius.circular(9),
+                color: isPdf
+                    ? AppColors.danger.withValues(alpha: 0.15)
+                    : AppColors.goldLight.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 isPdf
                     ? Icons.picture_as_pdf_rounded
                     : Icons.insert_drive_file_rounded,
+                color: isPdf ? AppColors.danger : AppColors.goldLight,
                 size: 18,
-                color: mine ? const Color(0xFF231600) : AppColors.goldLight,
               ),
             ),
             const SizedBox(width: 9),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     name,
@@ -1010,18 +1327,22 @@ class _AttachmentPreview extends StatelessWidget {
                       color: _onBubble,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
-                    uploading ? 'Uploading' : (isPdf ? 'PDF · Tap to open' : 'Tap to open'),
+                    isPdf ? 'PDF document' : 'Attachment',
                     style: TextStyle(
                       fontSize: 9.5,
-                      color: mine
-                          ? const Color(0xFF231600).withValues(alpha: 0.65)
-                          : AppColors.muted,
+                      color: _onBubble.withValues(alpha: 0.65),
                     ),
                   ),
                 ],
               ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.open_in_new_rounded,
+              size: 14,
+              color: _onBubble.withValues(alpha: 0.65),
             ),
           ],
         ),
@@ -1030,38 +1351,273 @@ class _AttachmentPreview extends StatelessWidget {
   }
 }
 
-class _Placeholder extends StatelessWidget {
-  final double width;
-  final Widget child;
-  const _Placeholder({required this.width, required this.child});
+// ─────────────────────────────────────────────── In-Bubble Voice Note Player
+class _VoiceNoteBubblePlayer extends StatefulWidget {
+  final String? localPath;
+  final String? remoteUrl;
+  final String name;
+  final bool mine;
+
+  const _VoiceNoteBubblePlayer({
+    required this.localPath,
+    required this.remoteUrl,
+    required this.name,
+    required this.mine,
+  });
+
+  @override
+  State<_VoiceNoteBubblePlayer> createState() => _VoiceNoteBubblePlayerState();
+}
+
+class _VoiceNoteBubblePlayerState extends State<_VoiceNoteBubblePlayer> {
+  late final AudioPlayer _player;
+  bool _isPlaying = false;
+  bool _isLoading = false;
+  int _positionSec = 0;
+  int _durationSec = 0;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
+  StreamSubscription? _completeSub;
+  StreamSubscription? _stateSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = AudioPlayer();
+
+    _posSub = _player.onPositionChanged.listen((pos) {
+      if (mounted) setState(() => _positionSec = pos.inSeconds);
+    });
+
+    _durSub = _player.onDurationChanged.listen((dur) {
+      if (mounted && dur.inSeconds > 0) {
+        setState(() => _durationSec = dur.inSeconds);
+      }
+    });
+
+    _completeSub = _player.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _isLoading = false;
+          _positionSec = 0;
+        });
+      }
+    });
+
+    _stateSub = _player.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        if (state == PlayerState.playing) {
+          setState(() {
+            _isPlaying = true;
+            _isLoading = false;
+          });
+        } else if (state == PlayerState.paused) {
+          setState(() {
+            _isPlaying = false;
+            _isLoading = false;
+          });
+        } else if (state == PlayerState.stopped || state == PlayerState.completed) {
+          setState(() {
+            _isPlaying = false;
+            _isLoading = false;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    _durSub?.cancel();
+    _completeSub?.cancel();
+    _stateSub?.cancel();
+    _player.dispose();
+    super.dispose();
+  }
+
+  String _fmt(int sec) {
+    final m = (sec ~/ 60).toString().padLeft(2, '0');
+    final s = (sec % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Future<void> _toggle() async {
+    if (_isLoading) return;
+
+    try {
+      if (_isPlaying) {
+        await _player.pause();
+        setState(() {
+          _isPlaying = false;
+          _isLoading = false;
+        });
+      } else {
+        Source? src;
+        if (widget.localPath != null && File(widget.localPath!).existsSync()) {
+          src = DeviceFileSource(widget.localPath!);
+        } else if (widget.remoteUrl != null) {
+          final urlStr = widget.remoteUrl!.trim();
+          final fullUrl = (urlStr.startsWith('http://') || urlStr.startsWith('https://'))
+              ? urlStr
+              : 'https://course.nexcoreit4u.com/${urlStr.startsWith('/') ? urlStr.substring(1) : urlStr}';
+          src = UrlSource(fullUrl);
+        }
+
+        if (src != null) {
+          setState(() => _isLoading = true);
+          if (_positionSec >= _durationSec && _durationSec > 0) {
+            _positionSec = 0;
+            await _player.seek(Duration.zero);
+          }
+          await _player.play(src);
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Audio file location is invalid.'),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not play audio: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final maxSec = _durationSec > 0 ? _durationSec : 1;
+    final currentSec = _positionSec.clamp(0, maxSec);
+    final onBubbleColor = widget.mine ? const Color(0xFF231600) : AppColors.cream;
+    final btnBg = widget.mine ? const Color(0xFF231600) : AppColors.gold;
+    final btnIconColor = widget.mine ? AppColors.gold : const Color(0xFF231600);
+
     return Container(
-      width: width,
-      height: 160,
-      color: AppColors.line.withValues(alpha: 0.30),
-      alignment: Alignment.center,
-      child: child,
+      width: MediaQuery.of(context).size.width * 0.62,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: widget.mine
+            ? Colors.black.withValues(alpha: 0.08)
+            : AppColors.line.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: _toggle,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: btnBg,
+                shape: BoxShape.circle,
+              ),
+              child: _isLoading
+                  ? Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: btnIconColor,
+                        ),
+                      ),
+                    )
+                  : Icon(
+                      _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      size: 22,
+                      color: btnIconColor,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                    activeTrackColor: onBubbleColor,
+                    inactiveTrackColor: onBubbleColor.withValues(alpha: 0.3),
+                    thumbColor: onBubbleColor,
+                  ),
+                  child: Slider(
+                    value: currentSec.toDouble(),
+                    min: 0,
+                    max: maxSec.toDouble(),
+                    onChanged: (val) {
+                      final s = val.toInt();
+                      _player.seek(Duration(seconds: s));
+                      setState(() => _positionSec = s);
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _fmt(currentSec),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: onBubbleColor.withValues(alpha: 0.75),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.mic_rounded,
+                            size: 11,
+                            color: onBubbleColor.withValues(alpha: 0.75),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            _fmt(maxSec),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: onBubbleColor.withValues(alpha: 0.75),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-// -----------------------------------------------------------------------------
-// Full-screen image viewer
-// -----------------------------------------------------------------------------
-
+// ─────────────────────────────────────────────── Image Viewer
 class _ImageViewer extends StatelessWidget {
   final ImageProvider image;
   final String title;
-  final Object heroTag;
-  final String? externalUrl;
+  final String heroTag;
 
   const _ImageViewer({
     required this.image,
     required this.title,
     required this.heroTag,
-    this.externalUrl,
   });
 
   @override
@@ -1069,39 +1625,16 @@ class _ImageViewer extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.55),
-        elevation: 0,
-        foregroundColor: AppColors.cream,
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          if (externalUrl != null)
-            IconButton(
-              tooltip: 'Open in browser',
-              icon: const Icon(Icons.open_in_new_rounded, size: 20),
-              onPressed: () async {
-                final uri = Uri.tryParse(externalUrl!);
-                if (uri != null && await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-            ),
-        ],
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(title, style: const TextStyle(fontSize: 14)),
       ),
       body: Center(
         child: Hero(
           tag: heroTag,
           child: InteractiveViewer(
             minScale: 0.8,
-            maxScale: 4,
+            maxScale: 4.0,
             child: Image(
               image: image,
               fit: BoxFit.contain,
@@ -1113,6 +1646,156 @@ class _ImageViewer extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Pulsing Recording Dot
+class _PulsingRedDot extends StatefulWidget {
+  const _PulsingRedDot();
+
+  @override
+  State<_PulsingRedDot> createState() => _PulsingRedDotState();
+}
+
+class _PulsingRedDotState extends State<_PulsingRedDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.3, end: 1.0).animate(_controller),
+      child: Container(
+        width: 10,
+        height: 10,
+        decoration: const BoxDecoration(
+          color: AppColors.danger,
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Audio Waveform Visualizer
+class _AudioWaveformAnimation extends StatefulWidget {
+  final bool isRecording;
+  final bool isPlaying;
+  final double progress;
+
+  const _AudioWaveformAnimation({
+    required this.isRecording,
+    this.isPlaying = false,
+    this.progress = 0.0,
+  });
+
+  @override
+  State<_AudioWaveformAnimation> createState() =>
+      _AudioWaveformAnimationState();
+}
+
+class _AudioWaveformAnimationState extends State<_AudioWaveformAnimation>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  static const List<double> _barPattern = [
+    0.3, 0.5, 0.8, 0.4, 0.9, 0.6, 0.3, 0.7, 1.0, 0.5,
+    0.8, 0.4, 0.6, 0.9, 0.7, 0.3, 0.8, 0.5, 1.0, 0.6,
+    0.4, 0.7, 0.9, 0.5, 0.3, 0.8, 0.6, 0.4
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    if (widget.isRecording || widget.isPlaying) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AudioWaveformAnimation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((widget.isRecording || widget.isPlaying) && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.isRecording && !widget.isPlaying && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final animVal = _controller.value;
+
+        return SizedBox(
+          height: 34,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: List.generate(_barPattern.length, (index) {
+              final baseRatio = _barPattern[index];
+              final activeIndex = (widget.progress * _barPattern.length).floor();
+              final isPassed = index <= activeIndex;
+
+              double phase = (index % 4) * 0.25;
+              double bounce = widget.isRecording
+                  ? (0.4 + 0.6 * ((animVal + phase) % 1.0))
+                  : (widget.isPlaying
+                      ? (0.6 + 0.4 * ((animVal + phase) % 1.0))
+                      : 1.0);
+
+              double barHeight = (baseRatio * bounce * 24).clamp(4.0, 26.0);
+
+              Color barColor;
+              if (widget.isRecording) {
+                barColor = AppColors.gold;
+              } else if (isPassed && widget.isPlaying) {
+                barColor = AppColors.goldLight;
+              } else {
+                barColor = AppColors.line.withValues(alpha: 0.8);
+              }
+
+              return Container(
+                width: 2.8,
+                height: barHeight,
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }

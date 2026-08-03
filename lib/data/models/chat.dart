@@ -76,9 +76,10 @@ class ChatGroup {
 /// The server's `message_type` is the first authority; when it is missing or
 /// just says `file`, the extension decides. Shared by the model and the chat
 /// UI so a "this is an image" decision is made in exactly one place.
-enum AttachmentKind { none, image, pdf, file }
+enum AttachmentKind { none, image, pdf, audio, file }
 
 const _imageExtensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic'};
+const _audioExtensions = {'m4a', 'mp3', 'wav', 'aac', 'ogg', 'opus', 'flac'};
 
 /// Classifies a local file path, a remote URL, or a bare file name.
 AttachmentKind attachmentKindOf(String? pathOrUrl) {
@@ -94,6 +95,7 @@ AttachmentKind attachmentKindOf(String? pathOrUrl) {
   final ext = path.substring(dot + 1).toLowerCase();
   if (ext == 'pdf') return AttachmentKind.pdf;
   if (_imageExtensions.contains(ext)) return AttachmentKind.image;
+  if (_audioExtensions.contains(ext)) return AttachmentKind.audio;
   return AttachmentKind.file;
 }
 
@@ -192,7 +194,7 @@ class ChatMessage {
       text: text,
       messageType: switch (kind) {
         AttachmentKind.image => 'image',
-        AttachmentKind.pdf || AttachmentKind.file => 'file',
+        AttachmentKind.pdf || AttachmentKind.file || AttachmentKind.audio => 'file',
         AttachmentKind.none => 'text',
       },
       createdAt: createdAt ?? DateTime.now(),
