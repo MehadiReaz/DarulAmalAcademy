@@ -247,20 +247,40 @@ class _PayFeesScreenState extends State<PayFeesScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Fees'),
-        bottom: TabBar(
-          controller: _tabs,
-          indicatorColor: AppColors.gold,
-          labelColor: AppColors.gold,
-          unselectedLabelColor: AppColors.muted,
-          labelStyle: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
+        title: const Text('Fees & Payments'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: TabBar(
+              controller: _tabs,
+              indicator: BoxDecoration(
+                color: AppColors.gold,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelColor: const Color(0xFF241700),
+              unselectedLabelColor: AppColors.muted,
+              labelStyle: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+              tabs: [
+                Tab(text: 'Due (${provider.dues.length})'),
+                const Tab(text: 'Payment History'),
+              ],
+            ),
           ),
-          tabs: [
-            Tab(text: 'Due (${provider.dues.length})'),
-            const Tab(text: 'History'),
-          ],
         ),
       ),
       body: TabBarView(
@@ -272,7 +292,7 @@ class _PayFeesScreenState extends State<PayFeesScreen>
 
   Widget _duesTab(FeeProvider provider) {
     if (provider.duesState == LoadState.loading && provider.dues.isEmpty) {
-      return const LoadingView();
+      return const LoadingView(message: 'Loading fee dues…');
     }
     if (provider.duesState == LoadState.error && provider.dues.isEmpty) {
       return ErrorView(
@@ -338,7 +358,7 @@ class _PayFeesScreenState extends State<PayFeesScreen>
   Widget _historyTab(FeeProvider provider) {
     if (provider.historyState == LoadState.loading &&
         provider.history.isEmpty) {
-      return const LoadingView();
+      return const LoadingView(message: 'Loading payment history…');
     }
     if (provider.historyState == LoadState.error && provider.history.isEmpty) {
       return ErrorView(
@@ -407,63 +427,139 @@ class _OutstandingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final currency = provider.duesCurrency;
     final total = provider.totalOutstanding.toStringAsFixed(2);
+    final count = provider.dues.length;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF24504A), Color(0xFF16332E)],
+          colors: [Color(0xFF2B5B53), Color(0xFF143029)],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.line),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          const Text(
-            'Total outstanding',
-            style: TextStyle(color: AppColors.muted, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            currency == null ? total : '$currency $total',
-            style: const TextStyle(
-              color: AppColors.gold,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
+          Positioned(
+            right: -30,
+            top: -30,
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.gold.withValues(alpha: 0.08),
+              ),
             ),
           ),
-          if (currency == null && provider.dues.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            const Text(
-              'Fees are recorded in more than one currency — see each item.',
-              style: TextStyle(color: AppColors.muted, fontSize: 10.5),
-            ),
-          ],
-          if (provider.overdueCount > 0) ...[
-            const SizedBox(height: 12),
-            Row(
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  size: 15,
-                  color: AppColors.danger,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(
+                          Icons.account_balance_wallet_rounded,
+                          color: AppColors.goldLight,
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Total Outstanding',
+                          style: TextStyle(
+                            color: AppColors.goldLight,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (count > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.gold.withValues(alpha: 0.2)),
+                        ),
+                        child: Text(
+                          '$count Pending',
+                          style: const TextStyle(
+                            color: AppColors.cream,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 7),
+                const SizedBox(height: 12),
                 Text(
-                  '${provider.overdueCount} overdue',
+                  currency == null ? total : '$currency $total',
                   style: const TextStyle(
-                    color: AppColors.danger,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
+                    color: AppColors.gold,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
                   ),
                 ),
+                if (currency == null && provider.dues.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Fees are recorded in more than one currency — see each item below.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 11),
+                  ),
+                ],
+                if (provider.overdueCount > 0) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: AppColors.danger.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 15,
+                          color: AppColors.danger,
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          '${provider.overdueCount} Payment Overdue — Action Required',
+                          style: const TextStyle(
+                            color: AppColors.danger,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -484,124 +580,246 @@ class _FeeCard extends StatelessWidget {
   });
 
   Color get _statusColor {
-    if (fee.isPaid) return AppColors.success;
+    if (fee.isPaid) return const Color(0xFF2ECC71);
     if (fee.isOverdue) return AppColors.danger;
     return AppColors.gold;
   }
 
+  IconData get _cardIcon {
+    if (fee.isPaid) return Icons.verified_rounded;
+    if (fee.isOverdue) return Icons.warning_amber_rounded;
+    return Icons.receipt_long_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isOverdue = fee.isOverdue;
+    final isPaid = fee.isPaid;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: fee.isOverdue ? AppColors.danger : AppColors.line,
-          width: fee.isOverdue ? 1.3 : 1,
+          color: isOverdue
+              ? AppColors.danger.withValues(alpha: 0.6)
+              : AppColors.line,
+          width: isOverdue ? 1.5 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border:
+                      Border.all(color: _statusColor.withValues(alpha: 0.3)),
+                ),
+                alignment: Alignment.center,
+                child: Icon(_cardIcon, color: _statusColor, size: 22),
+              ),
+              const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  fee.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13.5,
-                    height: 1.35,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fee.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: AppColors.cream,
+                        height: 1.3,
+                      ),
+                    ),
+                    if (fee.transactionNo != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        'Invoice #${fee.transactionNo!}',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: _statusColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
+                  border:
+                      Border.all(color: _statusColor.withValues(alpha: 0.3)),
                 ),
                 child: Text(
                   fee.statusLabel,
                   style: TextStyle(
                     color: _statusColor,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
+          const Divider(color: AppColors.line, height: 1),
+          const SizedBox(height: 14),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                fee.amountLabel,
-                style: const TextStyle(
-                  color: AppColors.gold,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Amount',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    fee.amountLabel,
+                    style: const TextStyle(
+                      color: AppColors.gold,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(),
               if (fee.dueDateLabel != null)
-                Text(
-                  fee.isPaid
-                      ? (fee.dateLabel ?? '')
-                      : 'Due ${fee.dueDateLabel}',
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      isPaid
+                          ? 'Payment Date'
+                          : (isOverdue ? 'Overdue Since' : 'Due Date'),
+                      style: TextStyle(
+                        color: isOverdue ? AppColors.danger : AppColors.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isPaid ? (fee.dateLabel ?? 'Paid') : fee.dueDateLabel!,
+                      style: TextStyle(
+                        color: isOverdue ? AppColors.danger : AppColors.cream,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),
-          if (fee.transactionNo != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              fee.transactionNo!,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontSize: 10,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ],
           if (onPay != null || onReceipt != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
+              height: 46,
               child: onPay != null
-                  ? FilledButton.icon(
-                      onPressed: busy ? null : onPay,
-                      icon: busy
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFF231600),
+                  ? Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppColors.gold, AppColors.goldDeep],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: busy ? null : onPay,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: busy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF241700),
+                                ),
+                              )
+                            : const Icon(
+                                Icons.lock_outline_rounded,
+                                size: 18,
+                                color: Color(0xFF241700),
                               ),
-                            )
-                          : const Icon(Icons.credit_card_rounded, size: 17),
-                      label: Text(busy ? 'Starting…' : 'Pay now'),
+                        label: Text(
+                          busy ? 'Starting Payment…' : 'Pay Now Securely',
+                          style: const TextStyle(
+                            color: Color(0xFF241700),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                     )
                   : OutlinedButton.icon(
                       onPressed: busy ? null : onReceipt,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.goldLight,
+                        side: BorderSide(
+                          color: AppColors.gold.withValues(alpha: 0.4),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
                       icon: busy
                           ? const SizedBox(
-                              width: 14,
-                              height: 14,
+                              width: 16,
+                              height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 color: AppColors.gold,
                               ),
                             )
-                          : const Icon(Icons.receipt_long_rounded, size: 16),
-                      label: Text(busy ? 'Opening…' : 'View receipt'),
+                          : const Icon(
+                              Icons.receipt_long_rounded,
+                              size: 18,
+                              color: AppColors.gold,
+                            ),
+                      label: Text(
+                        busy ? 'Downloading Receipt…' : 'Download Receipt PDF',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.cream,
+                        ),
+                      ),
                     ),
             ),
           ],

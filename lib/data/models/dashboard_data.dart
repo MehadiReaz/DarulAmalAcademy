@@ -262,6 +262,8 @@ class DashboardEvent {
   final String? start;
   final String? end;
   final String? location;
+  final String? status;
+  final int? remainingDays;
 
   const DashboardEvent({
     required this.id,
@@ -269,6 +271,8 @@ class DashboardEvent {
     this.start,
     this.end,
     this.location,
+    this.status,
+    this.remainingDays,
   });
 
   factory DashboardEvent.fromJson(Map<String, dynamic> json) => DashboardEvent(
@@ -277,6 +281,8 @@ class DashboardEvent {
         start: asStringOrNull(json['start']),
         end: asStringOrNull(json['end']),
         location: asStringOrNull(json['location']),
+        status: asStringOrNull(json['status']),
+        remainingDays: asIntOrNull(json['remaining_days']),
       );
 
   DateTime? get startsAt => asDate(start);

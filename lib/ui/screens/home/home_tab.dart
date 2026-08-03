@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/models/dashboard_data.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/dashboard_provider.dart';
@@ -10,12 +11,15 @@ import '../../../providers/notice_provider.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../attendance/attendance_screen.dart';
+import '../batches/my_batches_screen.dart';
+import '../courses/my_courses_screen.dart';
 import '../homework/homework_tab.dart';
 import '../lessons/lessons_screen.dart';
 import '../notices/notice_tab.dart';
 import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
+import '../routine/routine_screen.dart';
 import '../support/support_tab.dart';
 
 class HomeTab extends StatefulWidget {
@@ -32,9 +36,7 @@ class _HomeTabState extends State<HomeTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ClassProvider>().loadToday();
       context.read<DashboardProvider>().load();
-      // Loads the unread count for the Notice quick action.
       context.read<NoticeProvider>().loadNotices();
-      // Drives the dot on the header bell.
       context.read<NotificationProvider>().load();
     });
   }
@@ -47,6 +49,7 @@ class _HomeTabState extends State<HomeTab> {
     final notices = context.watch<NoticeProvider>();
     final notifications = context.watch<NotificationProvider>();
     final user = auth.user;
+    final dashData = dashboard.data;
 
     return Scaffold(
       body: SafeArea(
@@ -66,14 +69,10 @@ class _HomeTabState extends State<HomeTab> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 100),
             children: [
+              // Header
               _Header(
                 name: user?.name,
-                // The bell now opens the notification centre; notices keep
-                // their own quick-action tile below.
                 unreadAlerts: notifications.unreadCount,
-                // Was `user!.profilePhotoUrl!` — a student with no photo,
-                // or a cold start before the profile call returns, threw
-                // on this line and blanked the whole Home tab.
                 profileImage: user?.profilePhotoUrl,
                 onBellTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
@@ -82,13 +81,48 @@ class _HomeTabState extends State<HomeTab> {
                 ),
               ),
               const SizedBox(height: 14),
+
+              // Student Meta Chips + Course Tags
               _MetaChips(
                 studentId: user?.studentId,
                 rollNo: user?.rollNo,
                 className: user?.className,
+                courseNames: dashData?.courseNames ?? [],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
+
+              // Academic Performance & Attendance Overview Card
+              if (dashData != null) ...[
+                _AcademicOverviewCard(data: dashData),
+                const SizedBox(height: 18),
+              ],
+
+              // Live Class Card (if live/upcoming class exists)
               _LiveClassCard(dashboard: dashboard),
+
+              // Upcoming Due Homework Section
+              if (dashData != null && dashData.nextAssignments.isNotEmpty) ...[
+                _SectionTitle(
+                  'Upcoming Due Homework',
+                  trailing: 'View All',
+                  onTrailingTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HomeworkTab()),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _NextAssignmentsList(assignments: dashData.nextAssignments),
+                const SizedBox(height: 18),
+              ],
+
+              // Madrasah Events Section
+              if (dashData != null && dashData.upcomingEvents.isNotEmpty) ...[
+                const _SectionTitle('Events & Activities'),
+                const SizedBox(height: 10),
+                _UpcomingEventsList(events: dashData.upcomingEvents),
+                const SizedBox(height: 18),
+              ],
+
+              // Quick Actions Grid
               const _SectionTitle('Quick Actions'),
               const SizedBox(height: 12),
               _QuickActionsGrid(
@@ -106,9 +140,6 @@ class _HomeTabState extends State<HomeTab> {
 // ─────────────────────────────────────────────── Header
 class _Header extends StatelessWidget {
   final String? name;
-
-  /// Unread notifications, not notices — the bell opens the notification
-  /// centre now.
   final int unreadAlerts;
   final VoidCallback? onBellTap;
   final String? profileImage;
@@ -122,131 +153,199 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (profileImage?.isNotEmpty ?? false) ...[
-          Image.network(
-            profileImage!,
-            width: 46,
-            height: 46,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                width: 46,
-                height: 46,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF254C46), Color(0xFF173832)],
-                  ),
-                  borderRadius: BorderRadius.all(Radius.circular(15)),
-                ),
-                child: Text(
-                  Fmt.initials(name),
-                  style: const TextStyle(
-                    color: AppColors.gold,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-              );
-            },
+    final hasImage = profileImage != null && profileImage!.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-        ] else ...[
-          Container(
-            width: 46,
-            height: 46,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF254C46), Color(0xFF173832)],
+        ],
+      ),
+      child: Row(
+        children: [
+          // Profile Avatar with Ring
+          Stack(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.gold.withValues(alpha: 0.6),
+                    width: 1.5,
+                  ),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF25524B), Color(0xFF163731)],
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: hasImage
+                      ? Image.network(
+                          profileImage!,
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              _initialsWidget(),
+                        )
+                      : _initialsWidget(),
+                ),
               ),
-              borderRadius: BorderRadius.all(Radius.circular(15)),
+              Positioned(
+                bottom: 1,
+                right: 1,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2ECC71),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.surface, width: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+
+          // Greeting & Name
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: const [
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 13,
+                      color: AppColors.gold,
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      'Assalamu Alaikum',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.goldLight,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  name ?? 'Student',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.cream,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                const Text(
+                  'Darul Amal Academy',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
-            child: Text(
-              Fmt.initials(name),
-              style: const TextStyle(
-                color: AppColors.gold,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
+          ),
+          const SizedBox(width: 8),
+
+          // Notification Bell Button
+          Material(
+            color: const Color(0xFF183832),
+            borderRadius: BorderRadius.circular(15),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: onBellTap,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: AppColors.gold.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(
+                      Icons.notifications_outlined,
+                      size: 22,
+                      color: AppColors.goldLight,
+                    ),
+                    if (unreadAlerts > 0)
+                      Positioned(
+                        top: 7,
+                        right: 7,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1.5,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.surface,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            unreadAlerts > 99 ? '99+' : '$unreadAlerts',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
 
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Assalamu Alaikum',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                name ?? 'Student',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 18.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                "Ready for today's lesson?",
-                style: TextStyle(color: AppColors.muted, fontSize: 11.5),
-              ),
-            ],
-          ),
+  Widget _initialsWidget() {
+    return Center(
+      child: Text(
+        Fmt.initials(name),
+        style: const TextStyle(
+          color: AppColors.gold,
+          fontWeight: FontWeight.w800,
+          fontSize: 17,
         ),
-        const SizedBox(width: 8),
-        // Notification bell. The dot used to be permanently lit; it now
-        // reflects real unread state and the bell jumps to the Notice tab.
-        Material(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(13),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(13),
-            onTap: onBellTap,
-            child: SizedBox(
-              width: 42,
-              height: 42,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Icon(
-                    Icons.notifications_outlined,
-                    size: 20,
-                    color: AppColors.cream,
-                  ),
-                  if (unreadAlerts > 0)
-                    Positioned(
-                      top: 10,
-                      right: 11,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: AppColors.gold,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.surface,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -256,8 +355,14 @@ class _MetaChips extends StatelessWidget {
   final String? studentId;
   final String? rollNo;
   final String? className;
+  final List<String> courseNames;
 
-  const _MetaChips({this.studentId, this.rollNo, this.className});
+  const _MetaChips({
+    this.studentId,
+    this.rollNo,
+    this.className,
+    this.courseNames = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -268,6 +373,7 @@ class _MetaChips extends StatelessWidget {
         if (studentId != null) _chip('ID', studentId!),
         if (rollNo != null) _chip('Roll', rollNo!),
         if (className != null && className != '—') _chip('Class', className!),
+        ...courseNames.map((c) => _courseChip(c)),
       ],
     );
   }
@@ -304,6 +410,383 @@ class _MetaChips extends StatelessWidget {
       ),
     );
   }
+
+  Widget _courseChip(String name) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF193731),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        name,
+        style: const TextStyle(
+          color: AppColors.goldLight,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Academic Overview Card
+class _AcademicOverviewCard extends StatelessWidget {
+  final DashboardData data;
+  const _AcademicOverviewCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final totalAtt = data.totalAttendanceRecords;
+    final present = data.presentClasses;
+    final lateCls = data.lateClasses;
+    final absent = data.absentClasses;
+
+    final presentPct = totalAtt > 0 ? (present / totalAtt * 100).round() : 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: const [
+                  Icon(
+                    Icons.analytics_outlined,
+                    color: AppColors.goldLight,
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Academic Overview',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.cream,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.gold.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.gold.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Text(
+                  '$presentPct% Attendance',
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _statItem(
+                  icon: Icons.check_circle_outline_rounded,
+                  color: const Color(0xFF2ECC71),
+                  label: 'Present',
+                  value: '$present',
+                ),
+              ),
+              Expanded(
+                child: _statItem(
+                  icon: Icons.access_time_rounded,
+                  color: const Color(0xFFF39C12),
+                  label: 'Late',
+                  value: '$lateCls',
+                ),
+              ),
+              Expanded(
+                child: _statItem(
+                  icon: Icons.cancel_outlined,
+                  color: const Color(0xFFE74C3C),
+                  label: 'Absent',
+                  value: '$absent',
+                ),
+              ),
+              Expanded(
+                child: _statItem(
+                  icon: Icons.assignment_turned_in_outlined,
+                  color: AppColors.goldLight,
+                  label: 'Submitted',
+                  value:
+                      '${data.totalSubmittedAssignments}/${data.totalAssignments}',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: AppColors.cream,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            color: AppColors.muted,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Next Assignments List
+class _NextAssignmentsList extends StatelessWidget {
+  final List<DashboardAssignment> assignments;
+  const _NextAssignmentsList({required this.assignments});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 124,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: assignments.length,
+        itemBuilder: (context, i) {
+          final item = assignments[i];
+          final remDays = item.remainingDays ?? 0;
+          final daysText = remDays == 0
+              ? 'Due Today'
+              : (remDays == 1 ? 'Due Tomorrow' : 'Due in $remDays days');
+
+          return Container(
+            width: 240,
+            margin: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (item.studentClass?.name != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF24504A),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          item.studentClass!.name!,
+                          style: const TextStyle(
+                            color: AppColors.goldLight,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: remDays <= 1
+                            ? AppColors.danger.withValues(alpha: 0.2)
+                            : AppColors.gold.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        daysText,
+                        style: TextStyle(
+                          color: remDays <= 1
+                              ? AppColors.danger
+                              : AppColors.gold,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.cream,
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person_outline_rounded,
+                      size: 13,
+                      color: AppColors.muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        item.teacher?.name ?? 'Teacher',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Upcoming Events List
+class _UpcomingEventsList extends StatelessWidget {
+  final List<DashboardEvent> events;
+  const _UpcomingEventsList({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: events.map((evt) {
+        final isRunning = evt.status?.toLowerCase() == 'running';
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isRunning
+                  ? const Color(0xFF2ECC71).withValues(alpha: 0.5)
+                  : AppColors.line,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: isRunning
+                      ? const Color(0xFF2ECC71).withValues(alpha: 0.15)
+                      : AppColors.gold.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  Icons.event_note_rounded,
+                  color: isRunning ? const Color(0xFF2ECC71) : AppColors.gold,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      evt.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.cream,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    if (evt.start != null)
+                      Text(
+                        evt.end != null && evt.end != evt.start
+                            ? '${evt.start} – ${evt.end}'
+                            : evt.start!,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (evt.status != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isRunning
+                        ? const Color(0xFF2ECC71)
+                        : AppColors.gold.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    evt.status!,
+                    style: TextStyle(
+                      color: isRunning ? Colors.white : AppColors.gold,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────── Live Class Card
@@ -334,7 +817,6 @@ class _LiveClassCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Decorative circle
           Positioned(
             right: -20,
             top: -20,
@@ -350,7 +832,6 @@ class _LiveClassCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Status label
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -368,7 +849,7 @@ class _LiveClassCard extends StatelessWidget {
                       const SizedBox(width: 6),
                     ],
                     Text(
-                      isLive ? 'LIVE NOW' : 'UPCOMING',
+                      isLive ? 'LIVE NOW' : 'UPCOMING CLASS',
                       style: const TextStyle(
                         color: Color(0xFF241700),
                         fontSize: 10.5,
@@ -490,15 +971,35 @@ class _PulsingDotState extends State<_PulsingDot>
 // ─────────────────────────────────────────────── Section Title
 class _SectionTitle extends StatelessWidget {
   final String text;
-  const _SectionTitle(this.text);
+  final String? trailing;
+  final VoidCallback? onTrailingTap;
+
+  const _SectionTitle(this.text, {this.trailing, this.onTrailingTap});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            text,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          if (trailing != null)
+            GestureDetector(
+              onTap: onTrailingTap,
+              child: Text(
+                trailing!,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.gold,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -506,22 +1007,13 @@ class _SectionTitle extends StatelessWidget {
 
 // ─────────────────────────────────────────────── Quick Actions Grid
 class _QuickActionsGrid extends StatelessWidget {
-  /// Drives the badge on the Homework tile. Comes from the dashboard's
-  /// `quick_stats.pending_assignments`, so it costs no extra request.
   final int pendingHomework;
-
-  /// Badge on the Notice tile. The header bell now belongs to the
-  /// notification centre, so unread notices surface here instead.
   final int unreadNotices;
 
   const _QuickActionsGrid({this.pendingHomework = 0, this.unreadNotices = 0});
 
   @override
   Widget build(BuildContext context) {
-    // Every tile below now performs a real action. Five of the six used
-    // to show a snackbar telling the student to tap a tab themselves —
-    // switching tabs is possible from here since the selected index moved
-    // into ShellProvider.
     void goToTab(int index) => context.read<ShellProvider>().goTo(index);
 
     void push(Widget screen) =>
@@ -536,9 +1028,19 @@ class _QuickActionsGrid extends StatelessWidget {
       childAspectRatio: 0.86,
       children: [
         _ModuleItem(
+          icon: Icons.school_rounded,
+          label: 'My Courses',
+          onTap: () => push(const MyCoursesScreen()),
+        ),
+        _ModuleItem(
+          icon: Icons.groups_3_rounded,
+          label: 'My Batches',
+          onTap: () => push(const MyBatchesScreen()),
+        ),
+        _ModuleItem(
           icon: Icons.calendar_month_rounded,
-          label: 'My Class',
-          onTap: () => goToTab(ShellTab.classes),
+          label: 'Routine',
+          onTap: () => push(const RoutineScreen()),
         ),
         _ModuleItem(
           icon: Icons.assignment_rounded,
@@ -596,8 +1098,6 @@ class _ModuleItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-
-  /// Shown as a small count bubble when greater than zero.
   final int badge;
 
   const _ModuleItem({

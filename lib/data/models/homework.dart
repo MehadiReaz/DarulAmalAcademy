@@ -48,7 +48,8 @@ class Homework {
         asStringOrNull(json['assignment_status']);
 
     final submittedDone = asBool(json['submitted_done']);
-    final isSubmittedFlag = asBool(json['is_submitted']) || asBool(json['submitted']);
+    final isSubmittedFlag = asBool(json['is_submitted']) ||
+        (json['submitted'] is bool && json['submitted'] == true);
     final hasSubmittedContent = json['submitted_at'] != null ||
         json['submitted_text'] != null ||
         json['submitted_audio'] != null;
@@ -209,7 +210,8 @@ class HomeworkDetail {
         asStringOrNull(json['assignment_url']) ??
         (historyList.isNotEmpty ? historyList.first.audioUrl : null);
     final hasSubmittedContent = json['submitted_text'] != null || subAudio != null;
-    final isSubmittedFlag = asBool(json['is_submitted']) || asBool(json['submitted']);
+    final isSubmittedFlag = asBool(json['is_submitted']) ||
+        (json['submitted'] is bool && json['submitted'] == true);
 
     final isSub = submittedDone ||
         isSubmittedFlag ||

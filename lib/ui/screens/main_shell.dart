@@ -6,7 +6,6 @@ import '../../core/theme/app_colors.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/shell_provider.dart';
 import 'chat/chat_list_screen.dart';
-import 'classes/classes_tab.dart';
 import 'home/home_tab.dart';
 import 'profile/profile_tab.dart';
 import 'quran/quran_tab.dart';
@@ -23,13 +22,7 @@ import 'quran/quran_tab.dart';
 class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
-  static const _tabs = [
-    HomeTab(),
-    ClassesTab(),
-    QuranTab(),
-    ChatListScreen(),
-    ProfileTab(),
-  ];
+  static const _tabs = [HomeTab(), QuranTab(), ChatListScreen(), ProfileTab()];
 
   Future<void> _handlePopInvoked(BuildContext context, bool didPop) async {
     if (didPop) return;
@@ -121,7 +114,6 @@ class _CaretNavBar extends StatelessWidget {
   /// re-tints it, so there are no filled `selectedIcon` variants here.
   static const _icons = [
     Icons.home_outlined,
-    Icons.calendar_month_outlined,
     Icons.menu_book_outlined,
     Icons.forum_outlined,
     Icons.person_outline_rounded,
@@ -129,7 +121,7 @@ class _CaretNavBar extends StatelessWidget {
 
   /// Labels are no longer painted — the mockup is icon-only — but they're
   /// still read out by TalkBack/VoiceOver via [Semantics].
-  static const _labels = ['Home', 'Classes', "Qur'an", 'Group Chat', 'Profile'];
+  static const _labels = ['Home', "Qur'an", 'Group Chat', 'Profile'];
 
   static const _chatIndex = 3;
 

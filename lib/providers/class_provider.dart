@@ -27,6 +27,10 @@ class ClassProvider extends BaseProvider {
   LoadState _routineState = LoadState.idle;
   String? _routineError;
 
+  List<Map<String, dynamic>> _batches = [];
+  LoadState _batchesState = LoadState.idle;
+  String? _batchesError;
+
   List<ClassRoutine> get todayClasses => _today;
   LoadState get todayState => _todayState;
   String? get todayError => _todayError;
@@ -42,6 +46,10 @@ class ClassProvider extends BaseProvider {
   ClassRoutineBundle? get routine => _routine;
   LoadState get routineState => _routineState;
   String? get routineError => _routineError;
+
+  List<Map<String, dynamic>> get batches => _batches;
+  LoadState get batchesState => _batchesState;
+  String? get batchesError => _batchesError;
 
   bool get hasClassToday => _today.isNotEmpty;
 
@@ -113,6 +121,21 @@ class ClassProvider extends BaseProvider {
       },
     );
     if (result != null) _routine = result;
+    safeNotify();
+  }
+
+  Future<void> loadBatches({bool force = false}) async {
+    if (_batchesState == LoadState.loading) return;
+    if (_batchesState == LoadState.ready && !force) return;
+
+    final result = await guard(
+      () => _repo.myBatches(),
+      onState: (state, err) {
+        _batchesState = state;
+        _batchesError = err;
+      },
+    );
+    if (result != null) _batches = result;
     safeNotify();
   }
 

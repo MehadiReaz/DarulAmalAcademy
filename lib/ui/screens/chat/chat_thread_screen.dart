@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
@@ -1023,6 +1024,38 @@ class _MessageBubble extends StatelessWidget {
   Color get _onBubble => mine ? const Color(0xFF231600) : AppColors.cream;
   Color get _bg => mine ? AppColors.gold : AppColors.surface;
 
+  void _copyMessage(BuildContext context) {
+    final text = message.text;
+    final String? toCopy = (text != null && text.trim().isNotEmpty)
+        ? text
+        : (message.showsAttachment ? message.attachmentName : null);
+
+    if (toCopy == null || toCopy.isEmpty) return;
+
+    Clipboard.setData(ClipboardData(text: toCopy));
+    HapticFeedback.mediumImpact();
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: const [
+            Icon(Icons.content_copy_rounded, size: 16, color: AppColors.goldLight),
+            SizedBox(width: 10),
+            Text('Message copied to clipboard'),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          side: BorderSide(color: AppColors.line),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final showSender = !mine && message.sender?.name != null;
@@ -1049,52 +1082,55 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             ),
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.76,
-            ),
-            padding: tightImage
-                ? const EdgeInsets.all(3)
-                : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: _bg,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(15),
-                topRight: const Radius.circular(15),
-                bottomLeft: Radius.circular(mine ? 15 : 4),
-                bottomRight: Radius.circular(mine ? 4 : 15),
+          GestureDetector(
+            onLongPress: () => _copyMessage(context),
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.76,
               ),
-              border: mine ? null : Border.all(color: AppColors.line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showAttachment)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: hasText ? 7 : 0),
-                    child: _AttachmentPreview(
-                      messageId: message.id.toString(),
-                      localPath: message.localAttachmentPath,
-                      remoteUrl: message.attachment,
-                      name: message.attachmentName,
-                      kind: kind,
-                      mine: mine,
-                      uploading: message.isUploading,
-                      progress: message.uploadProgress,
-                      failed: message.failed,
+              padding: tightImage
+                  ? const EdgeInsets.all(3)
+                  : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: _bg,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(15),
+                  topRight: const Radius.circular(15),
+                  bottomLeft: Radius.circular(mine ? 15 : 4),
+                  bottomRight: Radius.circular(mine ? 4 : 15),
+                ),
+                border: mine ? null : Border.all(color: AppColors.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showAttachment)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: hasText ? 7 : 0),
+                      child: _AttachmentPreview(
+                        messageId: message.id.toString(),
+                        localPath: message.localAttachmentPath,
+                        remoteUrl: message.attachment,
+                        name: message.attachmentName,
+                        kind: kind,
+                        mine: mine,
+                        uploading: message.isUploading,
+                        progress: message.uploadProgress,
+                        failed: message.failed,
+                      ),
                     ),
-                  ),
-                if (hasText)
-                  Text(
-                    message.text!,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      height: 1.45,
-                      color: _onBubble,
+                  if (hasText)
+                    Text(
+                      message.text!,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.45,
+                        color: _onBubble,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(
