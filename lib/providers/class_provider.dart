@@ -1,6 +1,7 @@
 import '../core/network/api_exception.dart';
 import '../data/models/class_routine.dart';
 import '../data/models/enrolled_course.dart';
+import '../data/models/live_session.dart';
 import '../data/repositories/class_repository.dart';
 import 'base_provider.dart';
 
@@ -31,6 +32,10 @@ class ClassProvider extends BaseProvider {
   LoadState _batchesState = LoadState.idle;
   String? _batchesError;
 
+  LiveSessionBundle? _liveSessions;
+  LoadState _liveSessionsState = LoadState.idle;
+  String? _liveSessionsError;
+
   List<ClassRoutine> get todayClasses => _today;
   LoadState get todayState => _todayState;
   String? get todayError => _todayError;
@@ -50,6 +55,10 @@ class ClassProvider extends BaseProvider {
   List<Map<String, dynamic>> get batches => _batches;
   LoadState get batchesState => _batchesState;
   String? get batchesError => _batchesError;
+
+  LiveSessionBundle? get liveSessions => _liveSessions;
+  LoadState get liveSessionsState => _liveSessionsState;
+  String? get liveSessionsError => _liveSessionsError;
 
   bool get hasClassToday => _today.isNotEmpty;
 
@@ -139,6 +148,21 @@ class ClassProvider extends BaseProvider {
     safeNotify();
   }
 
+  Future<void> loadLiveSessions({bool force = false, int page = 1}) async {
+    if (_liveSessionsState == LoadState.loading) return;
+    if (_liveSessionsState == LoadState.ready && !force) return;
+
+    final result = await guard(
+      () => _repo.liveSessions(page: page),
+      onState: (state, err) {
+        _liveSessionsState = state;
+        _liveSessionsError = err;
+      },
+    );
+    if (result != null) _liveSessions = result;
+    safeNotify();
+  }
+
   /// Fetches the meeting link for a class. Returns null (and sets no
   /// error state) when the server refuses — the caller surfaces it.
   Future<ClassJoinInfo?> joinInfo(int classId) async {
@@ -156,6 +180,7 @@ class ClassProvider extends BaseProvider {
       loadUpcoming(force: true),
       loadCourses(force: true),
       loadRoutine(force: true),
+      loadLiveSessions(force: true),
     ]);
   }
 
@@ -165,14 +190,17 @@ class ClassProvider extends BaseProvider {
     _upcoming = [];
     _courses = [];
     _routine = null;
+    _liveSessions = null;
     _todayState = LoadState.idle;
     _upcomingState = LoadState.idle;
     _coursesState = LoadState.idle;
     _routineState = LoadState.idle;
+    _liveSessionsState = LoadState.idle;
     _routineError = null;
     _todayError = null;
     _upcomingError = null;
     _coursesError = null;
+    _liveSessionsError = null;
     safeNotify();
   }
 }

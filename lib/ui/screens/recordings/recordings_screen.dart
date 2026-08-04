@@ -7,12 +7,12 @@ import '../../../data/models/recording.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/recording_provider.dart';
 import '../../widgets/state_views.dart';
+import 'drive_player_screen.dart';
 import 'youtube_player_screen.dart';
 
 /// Class recordings, backed by `GET /student/recordings`.
 ///
-/// Playback plays YouTube videos directly in the app using [YoutubePlayerScreen].
-/// Drive and non-YouTube links are not supported.
+/// Playback plays YouTube and Google Drive videos directly in the app.
 class RecordingsScreen extends StatefulWidget {
   const RecordingsScreen({super.key});
 
@@ -30,29 +30,31 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   void _play(Recording r) {
-    final videoId = r.youtubeId;
-    if (videoId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            r.isDrive
-                ? 'Google Drive recordings are not supported. Only YouTube videos can be played.'
-                : 'Only YouTube recordings can be played in the app.',
+    if (r.isYoutubePlayable) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => YoutubePlayerScreen(
+            recording: r,
+            videoId: r.youtubeId!,
           ),
+        ),
+      );
+    } else if (r.isPlayable) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DrivePlayerScreen(
+            recording: r,
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Video link is unavailable.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      return;
     }
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => YoutubePlayerScreen(
-          recording: r,
-          videoId: videoId,
-        ),
-      ),
-    );
   }
 
   @override
@@ -131,7 +133,7 @@ class _RecordingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPlayable = recording.isYoutubePlayable;
+    final isPlayable = recording.isPlayable;
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
@@ -163,7 +165,9 @@ class _RecordingCard extends StatelessWidget {
               child: Icon(
                 recording.isYoutube
                     ? Icons.smart_display_rounded
-                    : Icons.play_circle_fill_rounded,
+                    : (recording.isDrive
+                        ? Icons.cloud_done_rounded
+                        : Icons.play_circle_fill_rounded),
                 size: 24,
                 color: isPlayable ? AppColors.goldLight : AppColors.muted,
               ),

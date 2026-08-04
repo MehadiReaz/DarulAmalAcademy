@@ -1,4 +1,5 @@
 import '../data/models/quran_progress.dart';
+import '../data/models/student_user.dart';
 import '../data/repositories/quran_repository.dart';
 import 'base_provider.dart';
 
@@ -17,6 +18,7 @@ class QuranProvider extends BaseProvider {
   LoadState get state => _state;
   String? get error => _error;
 
+  StudentUser? get student => _bundle?.student;
   QuranProgress? get progress => _bundle?.progress;
   List<QuranProgressLog> get logs => _bundle?.logs ?? const [];
   QuranReferenceData get reference =>

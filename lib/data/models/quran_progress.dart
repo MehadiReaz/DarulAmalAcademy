@@ -26,11 +26,14 @@ class QuranProgress {
   final String? nooraniQaidaLesson;
   final double nooraniQaidaPercentage;
   final int parasCompleted;
+  final List<int> parasCompletedList;
   final double paraPercentage;
   final int surahsCompleted;
+  final List<int> surahsCompletedList;
   final double surahPercentage;
   final String? readingFocus;
   final String? readingFocusLabel;
+  final String? weakAreas;
   final NamedRef? assignedTeacher;
   final DateTime? updatedAt;
 
@@ -39,41 +42,65 @@ class QuranProgress {
     this.nooraniQaidaLesson,
     this.nooraniQaidaPercentage = 0,
     this.parasCompleted = 0,
+    this.parasCompletedList = const [],
     this.paraPercentage = 0,
     this.surahsCompleted = 0,
+    this.surahsCompletedList = const [],
     this.surahPercentage = 0,
     this.readingFocus,
     this.readingFocusLabel,
+    this.weakAreas,
     this.assignedTeacher,
     this.updatedAt,
   });
 
-  factory QuranProgress.fromJson(Map<String, dynamic> json) => QuranProgress(
-        id: asIntOrNull(json['id']),
-        nooraniQaidaLesson: asStringOrNull(json['noorani_qaida_lesson']),
-        nooraniQaidaPercentage: asDouble(json['noorani_qaida_percentage']),
-        parasCompleted: asInt(json['paras_completed']),
-        paraPercentage: asDouble(json['para_percentage']),
-        surahsCompleted: asInt(json['surahs_completed']),
-        surahPercentage: asDouble(json['surah_percentage']),
-        readingFocus: asStringOrNull(json['quran_reading_focus']),
-        readingFocusLabel: asStringOrNull(json['reading_focus_label']),
-        assignedTeacher: json['assigned_teacher'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['assigned_teacher']) ?? {}),
-        updatedAt: asDate(json['updated_at']),
-      );
+  factory QuranProgress.fromJson(Map<String, dynamic> json) {
+    final paraList = _parseIntList(json['paras_completed']);
+    final surahList = _parseIntList(json['surahs_completed']);
+
+    return QuranProgress(
+      id: asIntOrNull(json['id']),
+      nooraniQaidaLesson: asStringOrNull(json['noorani_qaida_lesson']),
+      nooraniQaidaPercentage: asDouble(json['noorani_qaida_percentage']),
+      parasCompleted:
+          paraList.isNotEmpty ? paraList.length : asInt(json['paras_completed']),
+      parasCompletedList: paraList,
+      paraPercentage: asDouble(json['para_percentage']),
+      surahsCompleted:
+          surahList.isNotEmpty ? surahList.length : asInt(json['surahs_completed']),
+      surahsCompletedList: surahList,
+      surahPercentage: asDouble(json['surah_percentage']),
+      readingFocus: asStringOrNull(json['quran_reading_focus']),
+      readingFocusLabel: asStringOrNull(json['reading_focus_label']),
+      weakAreas: asStringOrNull(json['weak_areas']),
+      assignedTeacher: json['assigned_teacher'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['assigned_teacher']) ?? {}),
+      updatedAt: asDate(json['updated_at']),
+    );
+  }
+
+  static List<int> _parseIntList(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => asInt(e)).where((e) => e > 0).toList();
+    } else if (raw != null) {
+      final val = asInt(raw);
+      if (val > 0) return List.generate(val, (i) => i + 1);
+    }
+    return const [];
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'noorani_qaida_lesson': nooraniQaidaLesson,
         'noorani_qaida_percentage': nooraniQaidaPercentage,
-        'paras_completed': parasCompleted,
+        'paras_completed': parasCompletedList,
         'para_percentage': paraPercentage,
-        'surahs_completed': surahsCompleted,
+        'surahs_completed': surahsCompletedList,
         'surah_percentage': surahPercentage,
         'quran_reading_focus': readingFocus,
         'reading_focus_label': readingFocusLabel,
+        'weak_areas': weakAreas,
         'assigned_teacher': assignedTeacher?.toJson(),
         'updated_at': updatedAt?.toIso8601String(),
       };
@@ -95,25 +122,38 @@ class QuranProgress {
       paraPercentage == 0 &&
       surahPercentage == 0 &&
       parasCompleted == 0 &&
-      surahsCompleted == 0;
+      surahsCompleted == 0 &&
+      parasCompletedList.isEmpty &&
+      surahsCompletedList.isEmpty;
 
   String get teacherName => assignedTeacher?.name ?? 'Your teacher';
 }
 
 /// Matches an entry in `quran_progress_logs`.
-///
-/// `progress_data` is free-form JSON on the backend, so it is kept as a
-/// raw map rather than being forced into a schema.
 class QuranProgressLog {
   final int id;
   final String? loggedOn;
   final String? note;
+  final int? tajweedRating;
+  final String? readingFocusLabel;
+  final String? teacherRemark;
+  final String? weakAreas;
+  final List<int> parasCompletedList;
+  final List<int> surahsCompletedList;
+  final NamedRef? teacher;
   final Map<String, dynamic> progressData;
 
   const QuranProgressLog({
     required this.id,
     this.loggedOn,
     this.note,
+    this.tajweedRating,
+    this.readingFocusLabel,
+    this.teacherRemark,
+    this.weakAreas,
+    this.parasCompletedList = const [],
+    this.surahsCompletedList = const [],
+    this.teacher,
     this.progressData = const {},
   });
 
@@ -122,6 +162,15 @@ class QuranProgressLog {
         id: asInt(json['id']),
         loggedOn: asStringOrNull(json['logged_on']),
         note: asStringOrNull(json['note']),
+        tajweedRating: asIntOrNull(json['tajweed_rating']),
+        readingFocusLabel: asStringOrNull(json['reading_focus_label']),
+        teacherRemark: asStringOrNull(json['teacher_remark']),
+        weakAreas: asStringOrNull(json['weak_areas']),
+        parasCompletedList: QuranProgress._parseIntList(json['paras_completed']),
+        surahsCompletedList: QuranProgress._parseIntList(json['surahs_completed']),
+        teacher: json['teacher'] == null
+            ? null
+            : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
         progressData: asMap(json['progress_data']) ?? const {},
       );
 
@@ -129,6 +178,13 @@ class QuranProgressLog {
         'id': id,
         'logged_on': loggedOn,
         'note': note,
+        'tajweed_rating': tajweedRating,
+        'reading_focus_label': readingFocusLabel,
+        'teacher_remark': teacherRemark,
+        'weak_areas': weakAreas,
+        'paras_completed': parasCompletedList,
+        'surahs_completed': surahsCompletedList,
+        'teacher': teacher?.toJson(),
         'progress_data': progressData,
       };
 
@@ -214,12 +270,14 @@ class QuranReferenceData {
 /// it carries paginated logs and the reference data, and it is the
 /// endpoint the madrasah will keep current.
 class QuranProgressBundle {
+  final StudentUser? student;
   final QuranProgress? progress;
   final List<QuranProgressLog> logs;
   final Pagination logsPagination;
   final QuranReferenceData reference;
 
   const QuranProgressBundle({
+    this.student,
     this.progress,
     this.logs = const [],
     this.logsPagination = const Pagination(),
@@ -227,10 +285,14 @@ class QuranProgressBundle {
   });
 
   factory QuranProgressBundle.fromJson(Map<String, dynamic> json) {
-    final rawProgress = asMap(json['progress']);
+    final rawStudent = asMap(json['student']);
+    final rawProgress = asMap(json['progress']) ??
+        (rawStudent != null ? asMap(rawStudent['quran_progress']) : null);
     final logsBlock = asMap(json['logs']) ?? const {};
 
     return QuranProgressBundle(
+      student:
+          rawStudent == null ? null : StudentUser.fromJson(rawStudent),
       // `progress` is null until a teacher records the first entry.
       progress:
           rawProgress == null ? null : QuranProgress.fromJson(rawProgress),

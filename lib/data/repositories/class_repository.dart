@@ -4,6 +4,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/utils/json_utils.dart';
 import '../models/class_routine.dart';
 import '../models/enrolled_course.dart';
+import '../models/live_session.dart';
 
 class ClassRepository {
   final ApiClient _client;
@@ -82,5 +83,14 @@ class ClassRepository {
     final data = await _client.get(ApiEndpoints.myBatches);
     if (data is! List) return const [];
     return data.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+  }
+
+  /// GET /student/live-sessions
+  Future<LiveSessionBundle> liveSessions({int page = 1}) async {
+    final data = await _client.get(
+      ApiEndpoints.liveSessions,
+      query: {'page': page},
+    );
+    return LiveSessionBundle.fromJson(asMap(data) ?? {});
   }
 }

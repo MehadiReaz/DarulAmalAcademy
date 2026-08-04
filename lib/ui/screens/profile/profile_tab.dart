@@ -19,6 +19,7 @@ import '../../../providers/recording_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
 import '../attendance/attendance_screen.dart';
+import '../courses/live_sessions_screen.dart';
 import '../homework/homework_tab.dart';
 import '../lessons/lessons_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -27,6 +28,7 @@ import '../recordings/recordings_screen.dart';
 import '../routine/routine_screen.dart';
 import '../support/support_tab.dart';
 import '../../widgets/app_toast.dart';
+import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -143,6 +145,14 @@ class ProfileTab extends StatelessWidget {
                 ),
               ),
               _ActionTile(
+                icon: Icons.video_camera_front_outlined,
+                title: 'Live Sessions',
+                subtitle: 'Upcoming & active Zoom live classes',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LiveSessionsScreen()),
+                ),
+              ),
+              _ActionTile(
                 icon: Icons.play_circle_outline_rounded,
                 title: 'Recordings',
                 subtitle: 'Watch recorded live classes',
@@ -216,6 +226,14 @@ class ProfileTab extends StatelessWidget {
                 subtitle: 'Update your personal details',
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                ),
+              ),
+              _ActionTile(
+                icon: Icons.lock_outline_rounded,
+                title: 'Change Password',
+                subtitle: 'Update your account password',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
                 ),
               ),
               _ActionTile(

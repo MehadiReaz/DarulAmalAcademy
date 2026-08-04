@@ -39,6 +39,11 @@ dependencies:
   firebase_messaging: ^16.5.0
   flutter_local_notifications: ^22.2.0
 
+  video_player: ^2.9.2
+  chewie: ^1.8.5
+  webview_flutter_android: ^4.3.0
+  webview_flutter_wkwebview: ^3.18.0
+
 dependency_overrides:
   record_platform_interface: 1.2.0
   record_linux: 0.7.2

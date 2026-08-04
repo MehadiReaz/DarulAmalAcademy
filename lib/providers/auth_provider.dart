@@ -239,6 +239,27 @@ class AuthProvider extends BaseProvider {
     }
   }
 
+  /// POST /auth/change-password — changes password for authenticated user.
+  Future<bool> changePassword({
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    _setBusy(true);
+    _error = null;
+    try {
+      await _repo.changePassword(
+        password: password,
+        passwordConfirmation: passwordConfirmation,
+      );
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
   // --------------------------------------------------------------- profile
 
   Future<void> reloadProfile() async {

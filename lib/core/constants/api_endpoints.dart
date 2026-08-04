@@ -22,6 +22,7 @@ class ApiEndpoints {
   static const String studentProfile = '/auth/student/profile';
   static const String forgotPassword = '/auth/forgot-password';
   static const String resetPassword = '/auth/reset-password';
+  static const String changePassword = '/auth/change-password';
 
   // ---- Classes / courses ----
   /// RENAMED: was `/student/my-courses`.
@@ -37,6 +38,7 @@ class ApiEndpoints {
   /// been quietly falling back to the my-classes list.
   static const String classesToday = '/student/class/today';
   static const String classesUpcoming = '/student/class/upcoming';
+  static const String liveSessions = '/student/live-sessions';
   static const String classRoutine = '/student/my-class-routine';
   static const String myBatches = '/student/my-batches';
 

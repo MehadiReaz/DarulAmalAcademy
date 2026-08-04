@@ -227,4 +227,16 @@ class AuthRepository {
       },
     );
   }
+
+  /// POST /auth/change-password { password, password_confirmation }
+  Future<void> changePassword({
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final form = FormData.fromMap({
+      'password': password,
+      'password_confirmation': passwordConfirmation,
+    });
+    await _client.postMultipart(ApiEndpoints.changePassword, form);
+  }
 }

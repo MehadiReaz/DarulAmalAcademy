@@ -90,5 +90,36 @@ class Recording {
   /// Returns true if this recording has a valid YouTube link that can be played in-app.
   bool get isYoutubePlayable => youtubeId != null;
 
-  bool get isPlayable => isYoutubePlayable;
+  /// Extracts the Google Drive file ID from [playableUrl] or [embedUrl] or [videoUrl].
+  String? get driveFileId {
+    final url = playableUrl;
+    if (url == null || url.isEmpty) return null;
+
+    final fileMatch =
+        RegExp(r'drive\.google\.com/file/d/([a-zA-Z0-9_-]+)').firstMatch(url);
+    if (fileMatch != null) return fileMatch.group(1);
+
+    final idMatch = RegExp(r'[?&]id=([a-zA-Z0-9_-]+)').firstMatch(url);
+    if (idMatch != null) return idMatch.group(1);
+
+    return null;
+  }
+
+  /// Format URL for Google Drive preview iframe embed playback in-app.
+  String? get driveEmbedUrl {
+    final fileId = driveFileId;
+    if (fileId != null && fileId.isNotEmpty) {
+      return 'https://drive.google.com/file/d/$fileId/preview';
+    }
+    return playableUrl;
+  }
+
+  bool get isDrivePlayable =>
+      isDrive ||
+      (playableUrl != null && playableUrl!.contains('drive.google.com'));
+
+  bool get isPlayable =>
+      isYoutubePlayable ||
+      isDrivePlayable ||
+      (playableUrl != null && playableUrl!.isNotEmpty);
 }
