@@ -7,12 +7,25 @@ class AttendanceRepository {
 
   AttendanceRepository(this._client);
 
-  /// GET /student/my-attendances
-  ///
-  /// Returns a map keyed by subject id rather than a list, so the parsing
-  /// lives in [SubjectAttendanceGroup.parseAll].
-  Future<List<SubjectAttendanceGroup>> myAttendances() async {
-    final data = await _client.get(ApiEndpoints.myAttendances);
+  /// GET /api/student/attendance
+  Future<List<SubjectAttendanceGroup>> myAttendances({
+    String? keyword,
+    int? courseId,
+    int? teacherId,
+    int? page,
+    int? perPage,
+  }) async {
+    final query = <String, dynamic>{};
+    if (keyword != null && keyword.isNotEmpty) query['keyword'] = keyword;
+    if (courseId != null) query['course_id'] = courseId;
+    if (teacherId != null) query['teacher_id'] = teacherId;
+    if (page != null) query['page'] = page;
+    if (perPage != null) query['per_page'] = perPage;
+
+    final data = await _client.get(
+      ApiEndpoints.studentAttendance,
+      query: query.isEmpty ? null : query,
+    );
     return SubjectAttendanceGroup.parseAll(data);
   }
 }

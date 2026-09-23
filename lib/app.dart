@@ -7,25 +7,22 @@ import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/attendance_repository.dart';
 import 'data/repositories/auth_repository.dart';
-import 'data/repositories/chat_repository.dart';
 import 'data/repositories/class_repository.dart';
 import 'data/repositories/dashboard_repository.dart';
 import 'data/repositories/fee_repository.dart';
 import 'data/repositories/homework_repository.dart';
-import 'data/repositories/lesson_repository.dart';
 import 'data/repositories/notice_repository.dart';
 import 'data/repositories/notification_repository.dart';
+import 'data/repositories/public_repository.dart';
 import 'data/repositories/quran_repository.dart';
 import 'data/repositories/recording_repository.dart';
 import 'data/repositories/ticket_repository.dart';
 import 'providers/attendance_provider.dart';
 import 'providers/auth_provider.dart';
-import 'providers/chat_provider.dart';
 import 'providers/class_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/fee_provider.dart';
 import 'providers/homework_provider.dart';
-import 'providers/lesson_provider.dart';
 import 'providers/notice_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/quran_provider.dart';
@@ -55,6 +52,7 @@ class DarulAmalApp extends StatelessWidget {
         // Repositories are plain objects — provided so widgets/providers
         // never construct their own ApiClient.
         Provider<ApiClient>.value(value: client),
+        Provider<PublicRepository>(create: (_) => PublicRepository(client)),
 
         ChangeNotifierProvider(
           create: (_) =>
@@ -85,16 +83,10 @@ class DarulAmalApp extends StatelessWidget {
           create: (_) => RecordingProvider(RecordingRepository(client)),
         ),
         ChangeNotifierProvider(
-          create: (_) => ChatProvider(ChatRepository(client)),
-        ),
-        ChangeNotifierProvider(
           create: (_) => QuranProvider(QuranRepository(client)),
         ),
         ChangeNotifierProvider(
           create: (_) => NotificationProvider(NotificationRepository(client)),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => LessonProvider(LessonRepository(client)),
         ),
         // Owns the selected bottom-nav tab so nested screens can navigate.
         ChangeNotifierProvider(create: (_) => ShellProvider()),

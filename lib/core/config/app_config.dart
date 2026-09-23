@@ -10,7 +10,7 @@ class AppConfig {
   ///  - iOS simulator / desktop can use 127.0.0.1
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://course.nexcoreit4u.com/api',
+    defaultValue: 'https://darulamal.nexcoreit4u.com',
   );
 
   static const Duration connectTimeout = Duration(seconds: 20);

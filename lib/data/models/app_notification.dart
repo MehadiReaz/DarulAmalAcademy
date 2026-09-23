@@ -6,7 +6,7 @@ import '../../core/utils/json_utils.dart';
 /// only the backend knows which one ships:
 ///
 ///  1. Laravel's `DatabaseNotification` —
-///     `{ id: "<uuid>", type: "App\\Notifications\\HomeworkAssigned",
+///     `{ id: "uuid", type: "App\\Notifications\\HomeworkAssigned",
 ///        data: { title, message, ... }, read_at: null, created_at }`
 ///  2. A hand-rolled resource —
 ///     `{ id: 1, title, message, is_read, created_at }`

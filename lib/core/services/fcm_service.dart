@@ -1,16 +1,24 @@
 import 'dart:developer' as dev;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../firebase_options.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  dev.log('Handling background message: ${message.messageId}');
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+    dev.log('Handling background message: ${message.messageId ?? "no-id"}');
+  } catch (e, st) {
+    dev.log('Error in background message handler: $e', error: e, stackTrace: st);
+  }
 }
 
 class FcmService {

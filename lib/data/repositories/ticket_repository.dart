@@ -1,62 +1,107 @@
+import 'package:dio/dio.dart';
+
 import '../../core/constants/api_endpoints.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/json_utils.dart';
 import '../models/pagination.dart';
 import '../models/support_ticket.dart';
 
+class SupportContacts {
+  final String? adminPhone;
+  final String? helpCenterPhone;
+  final String? adminWhatsApp;
+  final String? helpCenterWhatsApp;
+  final String? email;
+  final Map<String, dynamic> raw;
+
+  const SupportContacts({
+    this.adminPhone,
+    this.helpCenterPhone,
+    this.adminWhatsApp,
+    this.helpCenterWhatsApp,
+    this.email,
+    this.raw = const {},
+  });
+
+  factory SupportContacts.fromJson(Map<String, dynamic> json) {
+    return SupportContacts(
+      adminPhone: asStringOrNull(json['admin_phone'] ?? json['phone']),
+      helpCenterPhone: asStringOrNull(json['help_center_phone'] ?? json['support_phone']),
+      adminWhatsApp: asStringOrNull(json['admin_whatsapp'] ?? json['whatsapp']),
+      helpCenterWhatsApp: asStringOrNull(json['help_center_whatsapp']),
+      email: asStringOrNull(json['email']),
+      raw: json,
+    );
+  }
+}
+
 class TicketRepository {
   final ApiClient _client;
 
   TicketRepository(this._client);
 
-  /// GET /student/tickets  ->  raw Laravel paginator in `data`.
-  ///
-  /// CHANGED: this used to be `GET /tickets` returning a custom
-  /// `{ tickets: [...], pagination: {...} }` envelope. The route moved
-  /// under `/student` and now returns a standard paginator, so items come
-  /// from `data.data` and page info from the root.
-  Future<Paginated<SupportTicket>> list({int page = 1}) async {
-    final data = await _client.get(ApiEndpoints.tickets, query: {'page': page});
+  /// GET /api/student/support
+  /// Returns Admin Support and Help Center WhatsApp contacts.
+  Future<SupportContacts> contacts() async {
+    final data = await _client.get(ApiEndpoints.studentSupportContacts);
+    final map = asMap(data) ?? {};
+    return SupportContacts.fromJson(map);
+  }
+
+  /// GET /api/student/tickets
+  Future<Paginated<SupportTicket>> list({
+    int page = 1,
+    int? perPage,
+    String? status,
+    String? category,
+    String? keyword,
+  }) async {
+    final query = <String, dynamic>{'page': page};
+    if (perPage != null) query['per_page'] = perPage;
+    if (status != null && status.isNotEmpty) query['status'] = status;
+    if (category != null && category.isNotEmpty) query['category'] = category;
+    if (keyword != null && keyword.isNotEmpty) query['keyword'] = keyword;
+
+    final data = await _client.get(
+      ApiEndpoints.studentTickets,
+      query: query,
+    );
     final map = asMap(data) ?? {};
 
     return Paginated(
-      // `tickets` is still read as a fallback so a rollback of the
-      // backend change doesn't break the list.
       items: asList(map['data'] ?? map['tickets'], SupportTicket.fromJson),
       pagination: Pagination.fromEnvelope(map),
     );
   }
 
-  /// POST /student/tickets  { category, priority, subject, message }
-  ///
-  /// Confirmed working (201) as of the 26 Jul run — `category` is now
-  /// required and persisted, and the response is the created ticket at
-  /// the root of `data` rather than wrapped in a `ticket` key.
+  /// POST /api/student/tickets
   Future<SupportTicket> create({
     required String subject,
     required String message,
     String priority = 'medium',
     String category = 'other',
+    String? attachmentPath,
   }) async {
-    final data = await _client.post(ApiEndpoints.tickets, body: {
+    final formMap = <String, dynamic>{
       'subject': subject,
       'message': message,
       'priority': priority,
       'category': category,
-    });
+    };
 
+    if (attachmentPath != null && attachmentPath.isNotEmpty) {
+      formMap['attachment'] = await MultipartFile.fromFile(attachmentPath);
+    }
+
+    final form = FormData.fromMap(formMap);
+    final data = await _client.postMultipart(ApiEndpoints.studentTickets, form);
     final map = asMap(data) ?? {};
     return SupportTicket.fromJson(asMap(map['ticket']) ?? map);
   }
 
-  /// GET /student/tickets/{id}
-  ///
-  /// Handles both envelopes: the older `{ ticket, replies: [...] }` and
-  /// the flat ticket-with-nested-replies that `POST /student/tickets` now
-  /// returns. The detail endpoint 500'd during the 26 Jul run, so which
-  /// one it settles on is unconfirmed.
+  /// GET /api/student/tickets/{id}
   Future<TicketDetail> show(int id) async {
-    final data = await _client.get(ApiEndpoints.ticket(id));
+    final data = await _client.get(ApiEndpoints.studentTicketDetail(id));
     final map = asMap(data) ?? {};
 
     final ticketMap = asMap(map['ticket']) ?? map;
@@ -68,22 +113,20 @@ class TicketRepository {
     );
   }
 
-  /// DELETE /student/tickets/{id}
-  Future<void> delete(int id) async {
-    await _client.delete(ApiEndpoints.ticket(id));
-  }
+  /// POST /api/student/tickets/{id}/reply
+  Future<TicketReply> reply({
+    required int id,
+    required String message,
+    String? attachmentPath,
+  }) async {
+    final formMap = <String, dynamic>{'message': message};
 
-  /// POST /student/tickets/{id}/reply  { message, attachment? }
-  ///
-  /// This is now a student-facing route (it sits under `/student` in the
-  /// collection), so the app exposes a reply box. It returned 500 in the
-  /// 26 Jul run — the same backend fault as the detail endpoint — so the
-  /// UI surfaces the failure rather than assuming success.
-  Future<TicketReply> reply({required int id, required String message}) async {
-    final data = await _client.post(
-      ApiEndpoints.ticketReply(id),
-      body: {'message': message},
-    );
+    if (attachmentPath != null && attachmentPath.isNotEmpty) {
+      formMap['attachment'] = await MultipartFile.fromFile(attachmentPath);
+    }
+
+    final form = FormData.fromMap(formMap);
+    final data = await _client.postMultipart(ApiEndpoints.studentTicketReply(id), form);
     final map = asMap(data) ?? {};
     return TicketReply.fromJson(asMap(map['reply']) ?? map);
   }

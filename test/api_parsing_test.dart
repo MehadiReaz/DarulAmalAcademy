@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:darul_amal/core/network/api_client.dart';
 import 'package:darul_amal/data/models/attendance.dart';
-import 'package:darul_amal/data/models/chat.dart';
 import 'package:darul_amal/data/models/class_routine.dart';
 import 'package:darul_amal/data/models/dashboard_data.dart';
 import 'package:darul_amal/data/models/fee.dart';
@@ -16,7 +15,6 @@ import 'package:darul_amal/data/models/quran_progress.dart';
 import 'package:darul_amal/data/models/recording.dart';
 import 'package:darul_amal/data/models/student_user.dart';
 import 'package:darul_amal/data/models/support_ticket.dart';
-import 'package:darul_amal/data/repositories/chat_repository.dart';
 import 'package:darul_amal/data/repositories/homework_repository.dart';
 
 /// Parses the real captured API responses through every model.
@@ -219,7 +217,7 @@ void main() {
       final drive = items.firstWhere((r) => r.isDrive);
       expect(drive.title, 'Hifz Revision Session');
       expect(drive.sourceLabel, 'Google Drive');
-      expect(drive.isPlayable, isFalse);
+      expect(drive.isPlayable, isTrue);
       expect(drive.embedUrl, contains('/preview'));
 
       final yt = items.firstWhere((r) => r.isYoutube);
@@ -234,72 +232,53 @@ void main() {
       expect(r.subject?.name, 'Aqidah');
       expect(r.batch?.name, 'Nazera Quran Evening Batch B');
     });
-  });
 
-  group('group chat', () {
-    test('list uses group_id/group_name spelling', () {
-      final groups = (payload('GET group-chats') as List)
-          .cast<Map<String, dynamic>>()
-          .map(ChatGroup.fromJson)
-          .toList();
+    test('parses backend recordings payload with thumbnail_url, sources, and course/batch', () {
+      final json = <String, dynamic>{
+        "id": 19,
+        "title": "Nurani Qaida - Lesson 7: সুরা আল-ফাতিহা সহিহ তিলাওয়াত",
+        "description": "A word-by-word explanation...",
+        "video_type": "youtube",
+        "video_url": "https://www.youtube.com/watch?v=X2YnP50cwNU",
+        "sources": [
+          {
+            "type": "youtube",
+            "url": "https://www.youtube.com/watch?v=X2YnP50cwNU"
+          }
+        ],
+        "embed_url": "https://www.youtube.com/embed/X2YnP50cwNU",
+        "thumbnail_url": "https://img.youtube.com/vi/X2YnP50cwNU/hqdefault.jpg",
+        "course": {
+          "id": 4,
+          "name": "Ibtidaiyyah"
+        },
+        "batch": {
+          "id": 8,
+          "name": "Ibtidaiyyah - Noon Batch"
+        },
+        "subject": null,
+        "teacher": {
+          "id": 15,
+          "name": "Ustadha Zainab Chowdhury"
+        },
+        "created_at": "2026-09-22 17:57:17"
+      };
 
-      expect(groups.single.id, 43);
-      expect(groups.single.name, 'Hadith');
-      expect(groups.single.hasUnread, isFalse);
-    });
-
-    test('detail uses id/name spelling', () {
-      final g = ChatGroup.fromJson(mapPayload('GET group-chats/5'));
-      expect(g.id, 5);
-      expect(g.name, 'Nazera (Quran Tilawat)');
-      expect(g.course?.name, 'Nazera');
-      expect(g.contextLabel, isNotNull);
-    });
-
-    test('messages parse with nested pagination', () {
-      final map = mapPayload('GET group-chats/5/messages');
-      final messages = (map['messages'] as List)
-          .cast<Map<String, dynamic>>()
-          .map(ChatMessage.fromJson)
-          .toList();
-
-      expect(Pagination.fromEnvelope(map).total, 4);
-      expect(messages.length, 4);
-      expect(messages.first.sender?.name, 'Teacher');
-      expect(messages.first.isDeleted, isFalse);
-      // edited_at equals created_at on insert — not a real edit.
-      expect(messages.first.isEdited, isFalse);
-      expect(messages.first.isMine(9), isFalse);
-      expect(messages.first.isMine(3), isTrue);
-    });
-
-    test('POST echo parses even with a null message body', () {
-      final m = ChatMessage.fromJson(mapPayload('POST group-chats/5/messages'));
-      expect(m.id, 201);
-      expect(m.sender?.id, 9);
-      expect(m.isMine(9), isTrue);
-    });
-
-    test('search hits use flattened sender_name', () {
-      final hits = (payload('GET group-chats/5/search?q=hi') as List)
-          .cast<Map<String, dynamic>>()
-          .map(ChatSearchHit.fromJson)
-          .toList();
-
-      expect(hits.single.messageId, 129);
-      expect(hits.single.senderName, 'Ben Corkery');
-    });
-
-    test('send requires either message or attachment', () {
-      final repo = ChatRepository(ApiClient());
-      expect(
-        () => repo.send(1, message: null, attachmentPath: null),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        () => repo.send(1, message: '   ', attachmentPath: ''),
-        throwsA(isA<ArgumentError>()),
-      );
+      final r = Recording.fromJson(json);
+      expect(r.id, 19);
+      expect(r.title, contains('Nurani Qaida'));
+      expect(r.isYoutube, isTrue);
+      expect(r.isYoutubePlayable, isTrue);
+      expect(r.youtubeId, 'X2YnP50cwNU');
+      expect(r.thumbnailUrl, 'https://img.youtube.com/vi/X2YnP50cwNU/hqdefault.jpg');
+      expect(r.displayThumbnail, 'https://img.youtube.com/vi/X2YnP50cwNU/hqdefault.jpg');
+      expect(r.course?.name, 'Ibtidaiyyah');
+      expect(r.batch?.name, 'Ibtidaiyyah - Noon Batch');
+      expect(r.teacher?.name, 'Ustadha Zainab Chowdhury');
+      expect(r.subtitleInfo, contains('Ibtidaiyyah'));
+      expect(r.sources.length, 1);
+      expect(r.sources.first.type, 'youtube');
+      expect(r.recordedAt, isNotNull);
     });
   });
 
@@ -351,6 +330,40 @@ void main() {
       expect(read.isRead, isTrue);
       expect(read.title, n.title);
       expect(read.allAttachments, n.allAttachments);
+    });
+
+    test('backend student notices payload parses correctly with null description and attachment_url', () {
+      final json = <String, dynamic>{
+        "id": 5,
+        "title": "অভিভাবক সমাবেশ",
+        "description": null,
+        "excerpt": "ছাত্রদের পড়াশোনা, আখলাক ও সার্বিক অগ্রগতি নিয়ে আলোচনার লক্ষ্যে...",
+        "publish_date": "2026-09-11",
+        "publish_at": "Sep 11, 2026 at 12:00 AM",
+        "priority": "normal",
+        "pinned": false,
+        "attachment_url": "https://darulamal.nexcoreit4u.com/images/teacher-demo.png",
+        "is_read": false,
+        "created_at": "2026-09-11 00:00:00",
+        "updated_at": "2026-10-01 00:00:00"
+      };
+
+      final notice = Notice.fromJson(json);
+      expect(notice.id, 5);
+      expect(notice.title, 'অভিভাবক সমাবেশ');
+      expect(notice.description, isNull);
+      expect(notice.excerpt, startsWith('ছাত্রদের'));
+      expect(notice.displayBody, startsWith('ছাত্রদের'));
+      expect(notice.publishDate, '2026-09-11');
+      expect(notice.publishAt, 'Sep 11, 2026 at 12:00 AM');
+      expect(notice.displayDate, 'Sep 11, 2026 at 12:00 AM');
+      expect(notice.priority, 'normal');
+      expect(notice.pinned, isFalse);
+      expect(notice.isPinned, isFalse);
+      expect(notice.attachmentUrl, contains('teacher-demo.png'));
+      expect(notice.hasAttachment, isTrue);
+      expect(notice.allAttachments, contains('https://darulamal.nexcoreit4u.com/images/teacher-demo.png'));
+      expect(notice.isRead, isFalse);
     });
   });
 
@@ -494,7 +507,6 @@ void main() {
       expect(() => StudentUser.fromJson({}), returnsNormally);
       expect(() => FeeTransaction.fromJson({}), returnsNormally);
       expect(() => Recording.fromJson({}), returnsNormally);
-      expect(() => ChatMessage.fromJson({}), returnsNormally);
       expect(() => Homework.fromJson({}), returnsNormally);
       expect(() => SupportTicket.fromJson({}), returnsNormally);
       expect(() => QuranProgressBundle.fromJson({}), returnsNormally);

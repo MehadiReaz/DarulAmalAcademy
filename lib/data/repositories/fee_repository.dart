@@ -9,16 +9,55 @@ class FeeRepository {
 
   FeeRepository(this._client);
 
-  /// GET /student/fees/dues  ->  raw Laravel paginator in `data`.
-  Future<Paginated<FeeTransaction>> dues({int page = 1}) =>
-      _paginated(ApiEndpoints.feeDues, page);
+  /// GET /api/student/transactions
+  Future<dynamic> transactions({
+    String? keyword,
+    String? startDate,
+    String? endDate,
+    String? status,
+    String? type,
+    String? overdue,
+    int? page,
+  }) async {
+    final query = <String, dynamic>{};
+    if (keyword != null && keyword.isNotEmpty) query['keyword'] = keyword;
+    if (startDate != null && startDate.isNotEmpty) query['start_date'] = startDate;
+    if (endDate != null && endDate.isNotEmpty) query['end_date'] = endDate;
+    if (status != null && status.isNotEmpty) query['status'] = status;
+    if (type != null && type.isNotEmpty) query['type'] = type;
+    if (overdue != null && overdue.isNotEmpty) query['over_due'] = overdue;
+    if (page != null) query['page'] = page;
 
-  /// GET /student/fees/history
-  Future<Paginated<FeeTransaction>> history({int page = 1}) =>
-      _paginated(ApiEndpoints.feeHistory, page);
+    return await _client.get(
+      ApiEndpoints.studentTransactions,
+      query: query.isEmpty ? null : query,
+    );
+  }
 
-  Future<Paginated<FeeTransaction>> _paginated(String path, int page) async {
-    final data = await _client.get(path, query: {'page': page});
+  /// GET /api/student/transactions/{transaction_no}
+  Future<dynamic> transactionDetail(String transactionNo) async {
+    return await _client.get(ApiEndpoints.studentTransactionDetail(transactionNo));
+  }
+
+  /// GET /api/student/fees/dues
+  Future<Paginated<FeeTransaction>> dues({int page = 1, String? keyword, int? perPage}) =>
+      _paginated(ApiEndpoints.studentFeeDues, page, keyword: keyword, perPage: perPage);
+
+  /// GET /api/student/fees/history
+  Future<Paginated<FeeTransaction>> history({int page = 1, String? keyword, int? perPage}) =>
+      _paginated(ApiEndpoints.studentFeeHistory, page, keyword: keyword, perPage: perPage);
+
+  Future<Paginated<FeeTransaction>> _paginated(
+    String path,
+    int page, {
+    String? keyword,
+    int? perPage,
+  }) async {
+    final query = <String, dynamic>{'page': page};
+    if (keyword != null && keyword.isNotEmpty) query['keyword'] = keyword;
+    if (perPage != null) query['per_page'] = perPage;
+
+    final data = await _client.get(path, query: query);
     final map = asMap(data) ?? {};
     return Paginated(
       items: asList(map['data'], FeeTransaction.fromJson),
@@ -26,32 +65,19 @@ class FeeRepository {
     );
   }
 
-  /// POST /student/fees/pay/initiate  { id, invoiceId }
-  ///
-  /// Both spellings are sent on purpose. The app has always sent
-  /// `invoiceId` (camelCase, matching the validator this was written
-  /// against) while the current Postman collection sends `id`. Laravel
-  /// ignores unexpected keys, so submitting both works against either
-  /// validator and removes a guess from the payment path — drop one once
-  /// the controller is confirmed.
+  /// POST /api/student/fees/pay/initiate (form-data: id)
   Future<PaymentInitiation> initiatePayment(int invoiceId) async {
-    final data = await _client.post(
-      ApiEndpoints.feePayInitiate,
-      body: {'id': invoiceId, 'invoiceId': invoiceId},
+    final data = await _client.postForm(
+      ApiEndpoints.studentFeePayInitiate,
+      {'id': invoiceId.toString(), 'invoiceId': invoiceId.toString()},
     );
     return PaymentInitiation.fromJson(asMap(data) ?? {});
   }
 
-  /// GET /student/fees/pay/webview-url?transaction_id=
-  ///
-  /// A second way to reach the gateway: some gateways answer
-  /// `/pay/initiate` with a transaction but no checkout link, and the
-  /// hosted page has to be requested separately. Returns null when the
-  /// server has no URL to give rather than throwing, so the caller can
-  /// fall through to its own error message.
+  /// GET /api/student/fees/pay/webview-url?transaction_id=
   Future<String?> webviewUrl(String transactionId) async {
     final data = await _client.get(
-      ApiEndpoints.feePayWebviewUrl,
+      ApiEndpoints.studentFeePayWebviewUrl,
       query: {'transaction_id': transactionId},
     );
 
@@ -65,38 +91,34 @@ class FeeRepository {
         asStringOrNull(map['link']);
   }
 
-  /// POST /student/fees/pay/verify  { transaction_id }
-  ///
-  /// Returns the transaction's post-verification state. Called after the
-  /// student returns from the gateway.
+  /// POST /api/student/fees/pay/razorpay/verify (form-data)
   Future<FeeTransaction?> verifyPayment(
     String transactionId, {
     String? paymentId,
+    String? orderId,
     String? signature,
   }) async {
-    final body = <String, dynamic>{'transaction_id': transactionId};
-    if (paymentId != null) body['razorpay_payment_id'] = paymentId;
-    if (signature != null) body['razorpay_signature'] = signature;
+    final body = <String, dynamic>{
+      'transaction_id': transactionId,
+      'razorpay_payment_id': paymentId ?? '',
+      'razorpay_order_id': orderId ?? '',
+      'razorpay_signature': signature ?? '',
+    };
 
-    final data = await _client.post(
-      ApiEndpoints.feePayVerify,
-      body: body,
+    final data = await _client.postForm(
+      ApiEndpoints.studentFeeRazorpayVerify,
+      body,
     );
     final map = asMap(data);
     if (map == null) return null;
-    // The transaction may come back nested or at the root.
     final txn = asMap(map['transaction']) ?? map;
     return FeeTransaction.fromJson(txn);
   }
 
-  /// GET /student/fees/receipt/{transactionId}
-  ///
-  /// Returns whatever the server sends. In the test run this 404'd for
-  /// the sample ID, so the shape is unconfirmed — the raw map is returned
-  /// and the UI pulls a URL out of it if there is one.
+  /// GET /api/student/fees/receipt/{transactionId}
   Future<BinaryResponse> receipt(int transactionId) {
     return _client.getBytes(
-      ApiEndpoints.feeReceipt(transactionId),
+      ApiEndpoints.studentFeeReceipt(transactionId),
       accept: 'application/pdf',
     );
   }

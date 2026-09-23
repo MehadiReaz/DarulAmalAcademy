@@ -9,6 +9,10 @@ class TicketProvider extends BaseProvider {
 
   TicketProvider(this._repo);
 
+  SupportContacts? _contacts;
+  LoadState _contactsState = LoadState.idle;
+  String? _contactsError;
+
   List<SupportTicket> _tickets = [];
   Pagination _pagination = const Pagination();
   LoadState _listState = LoadState.idle;
@@ -22,6 +26,10 @@ class TicketProvider extends BaseProvider {
   bool _submitting = false;
   String? _submitError;
 
+  SupportContacts? get contacts => _contacts;
+  LoadState get contactsState => _contactsState;
+  String? get contactsError => _contactsError;
+
   List<SupportTicket> get tickets => _tickets;
   LoadState get listState => _listState;
   String? get listError => _listError;
@@ -34,6 +42,21 @@ class TicketProvider extends BaseProvider {
 
   bool get submitting => _submitting;
   String? get submitError => _submitError;
+
+  Future<void> loadContacts({bool force = false}) async {
+    if (_contactsState == LoadState.loading) return;
+    if (_contactsState == LoadState.ready && !force) return;
+
+    final result = await guard(
+      () => _repo.contacts(),
+      onState: (state, err) {
+        _contactsState = state;
+        _contactsError = err;
+      },
+    );
+    if (result != null) _contacts = result;
+    safeNotify();
+  }
 
   Future<void> loadTickets({bool force = false}) async {
     if (_listState == LoadState.loading) return;
@@ -91,6 +114,7 @@ class TicketProvider extends BaseProvider {
     required String message,
     String priority = 'medium',
     String category = 'other',
+    String? attachmentPath,
   }) async {
     _submitting = true;
     _submitError = null;
@@ -102,8 +126,8 @@ class TicketProvider extends BaseProvider {
         message: message,
         priority: priority,
         category: category,
+        attachmentPath: attachmentPath,
       );
-      // Put it at the top of the list without a full refetch.
       _tickets = [ticket, ..._tickets];
       return ticket;
     } on ApiException catch (e) {
@@ -115,16 +139,13 @@ class TicketProvider extends BaseProvider {
     }
   }
 
-  /// POST /student/tickets/{id}/reply
-  ///
-  /// Now a student-facing route. Returned 500 in the 26 Jul run, so the
-  /// error is surfaced rather than swallowed.
-  Future<bool> sendReply(int id, String message) async {
+  /// Adds a reply to an open ticket.
+  Future<bool> sendReply(int id, String message, {String? attachmentPath}) async {
     _submitting = true;
     _submitError = null;
     safeNotify();
     try {
-      final reply = await _repo.reply(id: id, message: message);
+      final reply = await _repo.reply(id: id, message: message, attachmentPath: attachmentPath);
       final current = _detail;
       if (current != null) {
         _detail = TicketDetail(
@@ -142,19 +163,6 @@ class TicketProvider extends BaseProvider {
     }
   }
 
-  Future<bool> deleteTicket(int id) async {
-    try {
-      await _repo.delete(id);
-      _tickets = _tickets.where((t) => t.id != id).toList();
-      safeNotify();
-      return true;
-    } on ApiException catch (e) {
-      _listError = e.message;
-      safeNotify();
-      return false;
-    }
-  }
-
   void reset() {
     _tickets = [];
     _pagination = const Pagination();
@@ -163,6 +171,9 @@ class TicketProvider extends BaseProvider {
     _detail = null;
     _detailState = LoadState.idle;
     _detailError = null;
+    _contacts = null;
+    _contactsState = LoadState.idle;
+    _contactsError = null;
     safeNotify();
   }
 }

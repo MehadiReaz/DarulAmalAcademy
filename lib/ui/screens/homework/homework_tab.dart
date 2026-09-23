@@ -3,17 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/homework.dart';
-import '../../../data/repositories/homework_repository.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/homework_provider.dart';
 import '../../widgets/state_views.dart';
 import 'homework_detail_screen.dart';
+import 'widgets/homework_card.dart';
 
-/// Homework list, backed by `GET /student/homework`.
-///
-/// These endpoints have existed on the backend (and been declared in
-/// `ApiEndpoints`) for a while with no app code behind them; this is that
-/// missing surface.
+/// Homework list screen styled with the app's signature deep-teal + gold theme.
 class HomeworkTab extends StatefulWidget {
   const HomeworkTab({super.key});
 
@@ -22,6 +19,8 @@ class HomeworkTab extends StatefulWidget {
 }
 
 class _HomeworkTabState extends State<HomeworkTab> {
+  String _selectedCourse = 'All Courses';
+
   @override
   void initState() {
     super.initState();
@@ -30,25 +29,79 @@ class _HomeworkTabState extends State<HomeworkTab> {
     });
   }
 
+  void _openDetail(int id) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HomeworkDetailScreen(homeworkId: id),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<HomeworkProvider>();
+    final allItems = provider.items;
+
+    // Extract all unique course names
+    final courseNames = <String>{};
+    for (final hw in allItems) {
+      courseNames.add(hw.courseDisplayName);
+    }
+    // Also include enrolled courses if present
+    final user = context.watch<AuthProvider>().user;
+    if (user != null) {
+      for (final c in user.courses) {
+        if (c.name != null && c.name!.trim().isNotEmpty) {
+          courseNames.add(c.name!.trim());
+        }
+      }
+    }
+    final sortedCourses = courseNames.toList()..sort();
+
+    // Filter items by selected course
+    final filteredItems = _selectedCourse == 'All Courses'
+        ? allItems
+        : allItems.where((h) => h.courseDisplayName == _selectedCourse).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Homework')),
+      backgroundColor: AppColors.bgDeep,
+      appBar: AppBar(
+        title: const Text(
+          'Homework',
+          style: TextStyle(
+            color: AppColors.cream,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
+        ),
+        backgroundColor: AppColors.bgDeep,
+        elevation: 0,
+        centerTitle: false,
+        iconTheme: const IconThemeData(color: AppColors.cream),
+      ),
       body: Column(
         children: [
-          _FilterBar(
-            active: provider.filter,
-            onChanged: (f) => provider.setFilter(f),
+          // 1. Top Course Filter Bar
+          _CourseFilterBar(
+            courses: sortedCourses,
+            selected: _selectedCourse,
+            onSelected: (course) {
+              setState(() {
+                _selectedCourse = course;
+              });
+            },
           ),
-          Expanded(child: _buildBody(provider)),
+
+          // 2. Main Content
+          Expanded(
+            child: _buildBody(provider, filteredItems),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBody(HomeworkProvider provider) {
+  Widget _buildBody(HomeworkProvider provider, List<Homework> items) {
     if (provider.listState == LoadState.loading && provider.items.isEmpty) {
       return const LoadingView();
     }
@@ -60,203 +113,235 @@ class _HomeworkTabState extends State<HomeworkTab> {
       );
     }
 
+    if (items.isEmpty) {
+      return RefreshIndicator(
+        color: AppColors.gold,
+        backgroundColor: AppColors.surface,
+        onRefresh: () => provider.load(force: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+            EmptyView(
+              icon: Icons.assignment_outlined,
+              title: _selectedCourse == 'All Courses'
+                  ? 'No assignments available'
+                  : 'No assignments for $_selectedCourse',
+              subtitle: 'Assignments created by your teachers will appear here.',
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Group items by course
+    final grouped = <String, List<Homework>>{};
+    for (final hw in items) {
+      final cName = hw.courseDisplayName;
+      grouped.putIfAbsent(cName, () => []).add(hw);
+    }
+
     return RefreshIndicator(
       color: AppColors.gold,
       backgroundColor: AppColors.surface,
       onRefresh: () => provider.load(force: true),
-      child: provider.items.isEmpty
-          ? ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                SizedBox(height: MediaQuery.of(context).size.height * 0.14),
-                EmptyView(
-                  icon: Icons.assignment_outlined,
-                  title: provider.filter == HomeworkFilter.submitted
-                      ? 'Nothing submitted yet'
-                      : 'No homework right now',
-                  subtitle: provider.filter == HomeworkFilter.all
-                      ? 'Work set by your teachers will appear here.'
-                      : 'Try a different filter.',
-                ),
-              ],
-            )
-          : ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 100),
-              itemCount: provider.items.length,
-              itemBuilder: (context, i) =>
-                  _HomeworkTile(homework: provider.items[i]),
-            ),
-    );
-  }
-}
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+        itemCount: grouped.keys.length,
+        itemBuilder: (context, index) {
+          final courseName = grouped.keys.elementAt(index);
+          final courseItems = grouped[courseName]!;
 
-class _FilterBar extends StatelessWidget {
-  final HomeworkFilter active;
-  final ValueChanged<HomeworkFilter> onChanged;
+          // Separate into Ongoing and Completed
+          final ongoing = courseItems.where((h) {
+            final isCompletedStatus = h.status.toLowerCase() == 'completed' ||
+                h.status.toLowerCase() == 'expired';
+            final isCompletedAssign =
+                h.assignmentStatus?.toLowerCase() == 'completed assignment';
+            return !h.isSubmitted && !isCompletedStatus && !isCompletedAssign;
+          }).toList();
 
-  const _FilterBar({required this.active, required this.onChanged});
+          final completed = courseItems.where((h) {
+            final isCompletedStatus = h.status.toLowerCase() == 'completed' ||
+                h.status.toLowerCase() == 'expired';
+            final isCompletedAssign =
+                h.assignmentStatus?.toLowerCase() == 'completed assignment';
+            return h.isSubmitted || isCompletedStatus || isCompletedAssign;
+          }).toList();
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
-      child: Row(
-        children: HomeworkFilter.values.map((f) {
-          final selected = f == active;
-          return Padding(
-            padding: const EdgeInsets.only(right: 9),
-            child: ChoiceChip(
-              label: Text(f.label),
-              selected: selected,
-              onSelected: (_) => onChanged(f),
-              backgroundColor: AppColors.surface,
-              selectedColor: AppColors.gold,
-              side: const BorderSide(color: AppColors.line),
-              labelStyle: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? const Color(0xFF231600) : AppColors.muted,
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
+          final batchName = courseItems.isNotEmpty
+              ? courseItems.first.batchDisplayName
+              : '$courseName - Evening Batch';
 
-class _HomeworkTile extends StatelessWidget {
-  final Homework homework;
-  const _HomeworkTile({required this.homework});
-
-  Color get _statusColor {
-    if (homework.isSubmitted) return AppColors.success;
-    if (homework.showAsOverdue) return AppColors.danger;
-    return AppColors.goldLight;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => HomeworkDetailScreen(homeworkId: homework.id),
-        ),
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: homework.showAsOverdue ? AppColors.danger : AppColors.line,
-            width: homework.showAsOverdue ? 1.3 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    homework.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    homework.dueLabel,
-                    style: TextStyle(
-                      color: _statusColor,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (homework.subject?.name != null ||
-                homework.teacher?.name != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                [
-                  if (homework.subject?.name != null) homework.subject!.name!,
-                  if (homework.teacher?.name != null) homework.teacher!.name!,
-                ].join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                ),
-              ),
-            ],
-            if (homework.description != null &&
-                homework.description!.isNotEmpty) ...[
-              const SizedBox(height: 7),
-              Text(
-                homework.description!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                  height: 1.45,
-                ),
-              ),
-            ],
-            const SizedBox(height: 11),
-            Row(
-              children: [
-                Icon(
-                  homework.isSubmitted
-                      ? Icons.check_circle_rounded
-                      : Icons.schedule_rounded,
-                  size: 13,
-                  color: _statusColor,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  homework.dueDate ?? 'No due date',
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Course Title
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text(
+                  courseName,
                   style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.cream,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
                   ),
                 ),
-                const Spacer(),
-                if (homework.hasMarks)
-                  Text(
-                    'Marks: ${homework.marks}',
-                    style: const TextStyle(
-                      color: AppColors.gold,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+              ),
+
+              // Batch Indicator with teal/gold dot
+              Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.gold,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      batchName,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.goldLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Ongoing Assignment Section
+              if (ongoing.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 14),
+                  child: Text(
+                    'Ongoing Assignment',
+                    style: TextStyle(
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.cream,
                     ),
                   ),
+                ),
+                ...ongoing.map(
+                  (hw) => HomeworkCard(
+                    homework: hw,
+                    onTap: () => _openDetail(hw.id),
+                  ),
+                ),
+                const SizedBox(height: 10),
               ],
-            ),
-          ],
+
+              // Completed Assignment Section
+              if (completed.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.only(top: 8, bottom: 14),
+                  child: Text(
+                    'Completed Assignment',
+                    style: TextStyle(
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.cream,
+                    ),
+                  ),
+                ),
+                ...completed.map(
+                  (hw) => HomeworkCard(
+                    homework: hw,
+                    onTap: () => _openDetail(hw.id),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────── Filter Bar
+class _CourseFilterBar extends StatelessWidget {
+  final List<String> courses;
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  const _CourseFilterBar({
+    required this.courses,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final allList = ['All Courses', ...courses];
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: allList.map((course) {
+            final isSelected = course == selected;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => onSelected(course),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.gold : AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.goldLight
+                          : AppColors.line,
+                    ),
+                  ),
+                  child: Text(
+                    course,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected
+                          ? const Color(0xFF231600)
+                          : AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ),
     );
   }
 }
+

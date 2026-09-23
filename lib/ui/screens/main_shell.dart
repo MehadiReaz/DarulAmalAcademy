@@ -3,26 +3,23 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../providers/chat_provider.dart';
 import '../../providers/shell_provider.dart';
-import 'chat/chat_list_screen.dart';
+import 'courses/my_courses_screen.dart';
 import 'home/home_tab.dart';
 import 'profile/profile_tab.dart';
 import 'quran/quran_tab.dart';
 
-/// Persistent bottom-nav shell. IndexedStack keeps each tab's scroll
-/// position and loaded data alive when switching.
-///
-/// 5 tabs: Home, Classes, Qur'an, Group Chat, Profile.
-/// Support, Homework, and Notices are reached from Home and Profile.
-///
-/// The selected index lives in [ShellProvider] rather than local state so
-/// that screens nested inside a tab (the Home quick-action grid, for
-/// example) can switch tabs directly.
+/// Persistent bottom-nav shell with 4 tabs:
+/// Home, Courses, Qur'an, Profile.
 class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
-  static const _tabs = [HomeTab(), QuranTab(), ChatListScreen(), ProfileTab()];
+  static const _tabs = [
+    HomeTab(),
+    MyCoursesScreen(),
+    QuranTab(),
+    ProfileTab(),
+  ];
 
   Future<void> _handlePopInvoked(BuildContext context, bool didPop) async {
     if (didPop) return;
@@ -70,7 +67,6 @@ class MainShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final index = context.select<ShellProvider, int>((p) => p.index);
-    final unread = context.select<ChatProvider, int>((p) => p.totalUnread);
 
     return PopScope(
       canPop: false,
@@ -80,7 +76,6 @@ class MainShell extends StatelessWidget {
         body: IndexedStack(index: index, children: _tabs),
         bottomNavigationBar: _CaretNavBar(
           index: index,
-          unread: unread,
           onTap: (i) => context.read<ShellProvider>().goTo(i),
         ),
       ),
@@ -88,42 +83,23 @@ class MainShell extends StatelessWidget {
   }
 }
 
-/// Floating icon-only nav bar with a caret that slides to the active tab.
-///
-/// This replaces Material 3's [NavigationBar]. The stock widget centres its
-/// destinations vertically and only supports a pill-shaped indicator behind
-/// the icon, so there's no supported way to pin a caret to the top edge —
-/// hence the hand-rolled Row.
-///
-/// Note that [NavigationBar] also grew its own height by
-/// `MediaQuery.viewPaddingOf(context).bottom` for free. That's gone now, so
-/// the [SafeArea] below is doing that job instead — without it the bar
-/// collides with the home indicator on gesture-nav devices.
 class _CaretNavBar extends StatelessWidget {
   const _CaretNavBar({
     required this.index,
-    required this.unread,
     required this.onTap,
   });
 
   final int index;
-  final int unread;
   final ValueChanged<int> onTap;
 
-  /// The mockup keeps the active icon in its outline weight and only
-  /// re-tints it, so there are no filled `selectedIcon` variants here.
   static const _icons = [
     Icons.home_outlined,
+    Icons.school_outlined,
     Icons.menu_book_outlined,
-    Icons.forum_outlined,
     Icons.person_outline_rounded,
   ];
 
-  /// Labels are no longer painted — the mockup is icon-only — but they're
-  /// still read out by TalkBack/VoiceOver via [Semantics].
-  static const _labels = ['Home', "Qur'an", 'Group Chat', 'Profile'];
-
-  static const _chatIndex = 3;
+  static const _labels = ['Home', 'Courses', "Qur'an", 'Profile'];
 
   static const _barHeight = 64.0;
   static const _caretWidth = 12.0;
@@ -185,16 +161,7 @@ class _CaretNavBar extends StatelessWidget {
                             child: InkResponse(
                               onTap: () => onTap(i),
                               radius: _barHeight / 2,
-                              child: Center(
-                                child: i == _chatIndex
-                                    ? Badge(
-                                        isLabelVisible: unread > 0,
-                                        label: Text('$unread'),
-                                        backgroundColor: AppColors.danger,
-                                        child: icon,
-                                      )
-                                    : icon,
-                              ),
+                              child: Center(child: icon),
                             ),
                           ),
                         );
@@ -211,7 +178,6 @@ class _CaretNavBar extends StatelessWidget {
   }
 }
 
-/// Downward-pointing triangle pinned to the top edge of the bar.
 class _CaretPainter extends CustomPainter {
   const _CaretPainter(this.color);
 

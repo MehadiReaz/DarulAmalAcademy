@@ -1,12 +1,9 @@
-import '../core/network/api_exception.dart';
 import '../data/models/class_routine.dart';
 import '../data/models/enrolled_course.dart';
 import '../data/models/live_session.dart';
 import '../data/repositories/class_repository.dart';
 import 'base_provider.dart';
 
-/// Holds the three class-related lists. Each section tracks its own
-/// state so one failing request doesn't blank the whole screen.
 class ClassProvider extends BaseProvider {
   final ClassRepository _repo;
 
@@ -62,17 +59,6 @@ class ClassProvider extends BaseProvider {
 
   bool get hasClassToday => _today.isNotEmpty;
 
-  /// True when today/upcoming failed but the routine endpoint works.
-  ///
-  /// The 403s that used to make this permanently true came from calling
-  /// `/student/classes/today` — a path that does not exist. The correct
-  /// singular paths are now used, so this should only fire on a real
-  /// server fault. The Classes tab still falls back to the weekly
-  /// routine when it does, rather than showing an error the student can
-  /// do nothing about.
-  bool get liveEndpointsBlocked =>
-      _todayState == LoadState.error && _upcomingState == LoadState.error;
-
   Future<void> loadToday({bool force = false}) async {
     if (_todayState == LoadState.loading) return;
     if (_todayState == LoadState.ready && !force) return;
@@ -108,7 +94,7 @@ class ClassProvider extends BaseProvider {
     if (_coursesState == LoadState.ready && !force) return;
 
     final result = await guard(
-      () => _repo.myClasses(),
+      () => _repo.myCourses(),
       onState: (state, err) {
         _coursesState = state;
         _coursesError = err;
@@ -123,7 +109,7 @@ class ClassProvider extends BaseProvider {
     if (_routineState == LoadState.ready && !force) return;
 
     final result = await guard(
-      () => _repo.routine(),
+      () => _repo.schedule(),
       onState: (state, err) {
         _routineState = state;
         _routineError = err;
@@ -148,12 +134,17 @@ class ClassProvider extends BaseProvider {
     safeNotify();
   }
 
-  Future<void> loadLiveSessions({bool force = false, int page = 1}) async {
+  Future<void> loadLiveSessions({
+    bool force = false,
+    String? keyword,
+    String? status,
+    int? page,
+  }) async {
     if (_liveSessionsState == LoadState.loading) return;
     if (_liveSessionsState == LoadState.ready && !force) return;
 
     final result = await guard(
-      () => _repo.liveSessions(page: page),
+      () => _repo.liveClasses(keyword: keyword, status: status, page: page),
       onState: (state, err) {
         _liveSessionsState = state;
         _liveSessionsError = err;
@@ -163,17 +154,23 @@ class ClassProvider extends BaseProvider {
     safeNotify();
   }
 
-  /// Fetches the meeting link for a class. Returns null (and sets no
-  /// error state) when the server refuses — the caller surfaces it.
-  Future<ClassJoinInfo?> joinInfo(int classId) async {
-    try {
-      return await _repo.join(classId);
-    } on ApiException catch (_) {
-      return null;
-    }
+  /// Loads canonical course tab: details, assignments, online-class, recordings, syllabus, attendance.
+  Future<dynamic> loadCourseTab(
+    int batchId,
+    String tab, {
+    int? page,
+    int? perPage,
+    String? status,
+  }) {
+    return _repo.courseTab(
+      batchId,
+      tab,
+      page: page,
+      perPage: perPage,
+      status: status,
+    );
   }
 
-  /// Pull-to-refresh on the home screen.
   Future<void> refreshAll() async {
     await Future.wait([
       loadToday(force: true),
@@ -181,25 +178,28 @@ class ClassProvider extends BaseProvider {
       loadCourses(force: true),
       loadRoutine(force: true),
       loadLiveSessions(force: true),
+      loadBatches(force: true),
     ]);
   }
 
-  /// Wipe state on logout so the next student doesn't see stale data.
   void reset() {
     _today = [];
     _upcoming = [];
     _courses = [];
+    _batches = [];
     _routine = null;
     _liveSessions = null;
     _todayState = LoadState.idle;
     _upcomingState = LoadState.idle;
     _coursesState = LoadState.idle;
     _routineState = LoadState.idle;
+    _batchesState = LoadState.idle;
     _liveSessionsState = LoadState.idle;
     _routineError = null;
     _todayError = null;
     _upcomingError = null;
     _coursesError = null;
+    _batchesError = null;
     _liveSessionsError = null;
     safeNotify();
   }

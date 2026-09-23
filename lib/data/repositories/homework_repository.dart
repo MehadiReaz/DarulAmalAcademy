@@ -5,13 +5,8 @@ import '../../core/network/api_client.dart';
 import '../../core/utils/json_utils.dart';
 import '../models/homework.dart';
 
-/// Filters accepted by `GET /student/homework?status=`.
-///
-/// The backend understands `pending`, `submitted`, `overdue` and
-/// `completed` — but `overdue` and `completed` are implemented with the
-/// same query as `submitted`, so only the two meaningful filters are
-/// exposed here.
-enum HomeworkFilter { all, pending, submitted }
+/// Filters accepted by `GET /api/student/assignments?status=`.
+enum HomeworkFilter { all, pending, submitted, expired }
 
 extension HomeworkFilterQuery on HomeworkFilter {
   String? get value {
@@ -19,9 +14,11 @@ extension HomeworkFilterQuery on HomeworkFilter {
       case HomeworkFilter.all:
         return null;
       case HomeworkFilter.pending:
-        return 'pending';
+        return 'unsubmitted';
       case HomeworkFilter.submitted:
         return 'submitted';
+      case HomeworkFilter.expired:
+        return 'Expired';
     }
   }
 
@@ -33,6 +30,8 @@ extension HomeworkFilterQuery on HomeworkFilter {
         return 'Pending';
       case HomeworkFilter.submitted:
         return 'Submitted';
+      case HomeworkFilter.expired:
+        return 'Expired';
     }
   }
 }
@@ -42,22 +41,32 @@ class HomeworkRepository {
 
   HomeworkRepository(this._client);
 
-  /// GET /student/homework
+  /// GET /api/student/assignments
   Future<List<Homework>> list({
     HomeworkFilter filter = HomeworkFilter.all,
+    String? keyword,
+    int? courseId,
+    String? rawStatus,
+    int? page,
+    int? perPage,
   }) async {
-    final status = filter.value;
+    final status = rawStatus ?? filter.value;
+    final query = <String, dynamic>{};
+    if (status != null && status.isNotEmpty) query['status'] = status;
+    if (keyword != null && keyword.isNotEmpty) query['keyword'] = keyword;
+    if (courseId != null) query['course_id'] = courseId;
+    if (page != null) query['page'] = page;
+    if (perPage != null) query['per_page'] = perPage;
+
     final data = await _client.get(
-      ApiEndpoints.homework,
-      query: status == null ? null : {'status': status},
+      ApiEndpoints.studentAssignments,
+      query: query.isEmpty ? null : query,
     );
     final rawMaps = extractHomeworkMaps(data);
     return rawMaps.map(Homework.fromJson).toList();
   }
 
-  /// Recursively extracts homework item maps from raw response data.
-  /// Handles bare lists, paginator envelopes ({assignments: {data: ...}}),
-  /// and category-keyed maps ({"Ongoing Assignment": [...]}).
+  /// Recursively extracts homework/assignment item maps from raw response data.
   static List<Map<String, dynamic>> extractHomeworkMaps(dynamic raw) {
     final result = <Map<String, dynamic>>[];
     if (raw == null) return result;
@@ -106,9 +115,9 @@ class HomeworkRepository {
     return result;
   }
 
-  /// GET /student/homework/{id}
+  /// GET /api/student/assignments/{id}
   Future<HomeworkDetail> detail(int id) async {
-    final data = await _client.get(ApiEndpoints.homeworkDetail(id));
+    final data = await _client.get(ApiEndpoints.studentAssignmentDetail(id));
     final map = asMap(data) ?? {};
     final assignmentMap = asMap(map['assignment']) ?? asMap(map['homework']) ?? {};
     final merged = Map<String, dynamic>.from(
@@ -124,38 +133,28 @@ class HomeworkRepository {
     return HomeworkDetail.fromJson(merged);
   }
 
-  /// POST /student/homework/{id}/submit
-  ///
-  /// The backend accepts `text` (nullable string) and/or `audio` (file
-  /// attachment: png, jpg, jpeg, pdf, zip, doc, docx) and rejects the
-  /// request with 422 if both are missing.
+  /// POST /api/student/assignments/{id}/submit
+  /// Submits student's assignment file (required) with optional description.
   Future<void> submit({
     required int id,
     String? text,
+    String? filePath,
     String? audioPath,
+    String? description,
   }) async {
-    final trimmed = text?.trim();
-    final hasText = trimmed != null && trimmed.isNotEmpty;
-    final hasAudio = audioPath != null && audioPath.isNotEmpty;
+    final uploadFile = filePath ?? audioPath;
+    final desc = description ?? text?.trim();
 
-    // Fail fast locally rather than burning a round trip on a request the
-    // server is guaranteed to reject.
-    if (!hasText && !hasAudio) {
-      throw ArgumentError('Provide either text answer or a file attachment.');
+    if (uploadFile == null || uploadFile.isEmpty) {
+      throw ArgumentError('A file attachment is required for assignment submission.');
     }
 
-    if (hasAudio) {
-      final form = FormData.fromMap({
-        if (hasText) 'text': trimmed,
-        'file': await MultipartFile.fromFile(audioPath),
-      });
-      await _client.postMultipart(ApiEndpoints.homeworkSubmit(id), form);
-      return;
-    }
+    final formMap = <String, dynamic>{
+      'file': await MultipartFile.fromFile(uploadFile),
+      if (desc != null && desc.isNotEmpty) 'description': desc,
+    };
 
-    await _client.post(
-      ApiEndpoints.homeworkSubmit(id),
-      body: {'text': trimmed},
-    );
+    final form = FormData.fromMap(formMap);
+    await _client.postMultipart(ApiEndpoints.studentAssignmentSubmit(id), form);
   }
 }

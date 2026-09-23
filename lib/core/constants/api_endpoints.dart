@@ -1,105 +1,216 @@
-/// Every endpoint currently implemented on the Laravel backend.
+/// Production Student API and Public API endpoints for Darul Amal Academy.
 ///
-/// Keep this file as the single source of truth — no raw path strings
-/// anywhere else in the app.
-///
-/// Verified against the 26 Jul 2026 Postman run against
-/// `https://course.nexcoreit4u.com/api/`. Endpoints that returned a
-/// server-side error in that run are marked so the app knows what to
-/// expect.
+/// Strictly derived from the official Postman collection:
+/// "Darul Amal Academy - Student API".
+/// All other non-spec endpoints have been removed.
 class ApiEndpoints {
   ApiEndpoints._();
 
-  // ---- Auth ----
-  static const String sendOtp = '/auth/send-otp';
-  static const String verifyOtp = '/auth/verify-otp';
+  // ==========================================
+  // 1. Authentication
+  // ==========================================
+  /// POST: Authenticates an active student with phone and password (form-data).
+  static const String studentLogin = '/api/student/auth/password';
 
-  /// Password sign-in for students who have set one — the OTP flow stays
-  /// the default, this is the fallback when SMS does not arrive.
-  static const String loginWithPassword = '/auth/login-with-password';
-  static const String logout = '/auth/logout';
-  static const String refresh = '/auth/refresh';
-  static const String studentProfile = '/auth/student/profile';
-  static const String forgotPassword = '/auth/forgot-password';
-  static const String resetPassword = '/auth/reset-password';
-  static const String changePassword = '/auth/change-password';
+  /// POST: Deletes all API tokens belonging to the authenticated student.
+  static const String studentLogout = '/api/student/auth/logout';
 
-  // ---- Classes / courses ----
-  /// RENAMED: was `/student/my-courses`.
-  static const String myClasses = '/student/my-classes';
-  static String classDetail(int id) => '/student/classes/$id';
+  // ==========================================
+  // 2. Dashboard & Profile
+  // ==========================================
+  /// GET: Returns student summary, fee alert, classes, progress, enrollments, recent payments.
+  static const String studentDashboard = '/api/student/dashboard';
 
-  /// Returns the live-class join payload (Zoom/meeting link).
-  static String classJoin(int id) => '/student/classes/$id/join';
+  /// GET: Returns authenticated student profile.
+  /// POST/PUT: Updates authenticated student profile (multipart/form-data).
+  static const String studentProfile = '/api/student/profile';
 
-  /// CORRECTED: the segment is singular (`class`, not `classes`). The old
-  /// `/student/classes/today` and `/student/classes/upcoming` paths do
-  /// not exist on the backend — they 404/403, which is why `today()` had
-  /// been quietly falling back to the my-classes list.
-  static const String classesToday = '/student/class/today';
-  static const String classesUpcoming = '/student/class/upcoming';
-  static const String liveSessions = '/student/live-sessions';
-  static const String classRoutine = '/student/my-class-routine';
-  static const String myBatches = '/student/my-batches';
+  // ==========================================
+  // 3. Courses & Course Tabs
+  // ==========================================
+  /// GET: Lists courses derived from active batch assignments.
+  static const String studentCourses = '/api/student/courses';
 
-  static const String myLessons = '/student/my-lessons';
+  /// Canonical course tabs supported by the backend:
+  /// `details`, `assignments`, `online-class`, `recordings`, `syllabus`, `attendance`.
+  static String studentCourseTab(int batchId, [String tab = 'details']) =>
+      '/api/student/courses/$batchId?tab=$tab';
 
-  static const String dashboard = '/student/dashboard';
+  /// GET: Lists active batch assignments with course, teacher, and schedule information.
+  static const String studentBatches = '/api/student/batches';
 
-  // ---- Attendance ----
-  static const String myAttendances = '/student/my-attendances';
+  // ==========================================
+  // 4. Schedule & Live Classes
+  // ==========================================
+  /// GET: Returns recurring schedule entries only for active batches.
+  static const String studentSchedule = '/api/student/schedule';
 
-  // ---- Notices ----
-  static const String notices = '/student/notices';
-  static String noticeDetail(int id) => '/student/notices/$id';
-  static String noticeRead(int id) => '/student/notices/$id/read';
+  /// GET: Returns active-batch schedule entries occurring today.
+  static const String studentClassToday = '/api/student/class/today';
 
-  // ---- Homework ----
-  static const String homework = '/student/homework';
-  static String homeworkDetail(int id) => '/student/homework/$id';
-  static String homeworkSubmit(int id) => '/student/homework/$id/submit';
+  /// GET: Returns active-batch schedule entries with next occurrence date.
+  static const String studentClassUpcoming = '/api/student/class/upcoming';
 
-  // ---- Qur'an ----
-  static const String quranProgress = '/student/quran-progress';
+  /// GET: Lists online classes belonging to active student batches.
+  static const String studentLiveClasses = '/api/student/live-classes';
 
-  // ---- Recordings ----
-  static const String recordings = '/student/recordings';
-  static String recordingDetail(int id) => '/student/recordings/$id';
+  // ==========================================
+  // 5. Assignments
+  // ==========================================
+  /// GET: Lists assignments only from active student batches.
+  static const String studentAssignments = '/api/student/assignments';
 
-  // ---- Fees ----
-  static const String feeDues = '/student/fees/dues';
-  static const String feeHistory = '/student/fees/history';
-  static const String feePayInitiate = '/student/fees/pay/initiate';
-  static const String feePayVerify = '/student/fees/pay/verify';
-  static String feeReceipt(int transactionId) =>
-      '/student/fees/receipt/$transactionId';
+  /// GET: Returns assignment details including current student's submission state.
+  static String studentAssignmentDetail(int id) =>
+      '/api/student/assignments/$id';
 
-  /// Returns a gateway checkout URL that can be opened in a WebView or the
-  /// system browser. Used when `/pay/initiate` answers without a redirect
-  /// link of its own.
-  static const String feePayWebviewUrl = '/student/fees/pay/webview-url';
+  /// POST: Submits or replaces student's assignment file (multipart/form-data).
+  static String studentAssignmentSubmit(int id) =>
+      '/api/student/assignments/$id/submit';
 
-  /// PUBLIC (no bearer token) Razorpay callback. The gateway posts here
-  /// itself; the app only needs it for the manual-confirmation path.
-  static const String feeRazorpayVerify = '/fees/pay/razorpay/verify';
+  // ==========================================
+  // 6. Recordings
+  // ==========================================
+  /// GET: Lists active recordings from active student batches.
+  static const String studentRecordings = '/api/student/recordings';
 
-  // ---- Support tickets ----
-  /// MOVED: these were `/tickets/...` and are now namespaced under
-  /// `/student`. The old paths 404.
-  static const String tickets = '/student/tickets';
-  static String ticket(int id) => '/student/tickets/$id';
-  static String ticketReply(int id) => '/student/tickets/$id/reply';
+  /// GET: Returns active recording details.
+  static String studentRecordingDetail(int id) =>
+      '/api/student/recordings/$id';
 
-  // ---- Notifications ----
-  static const String notifications = '/student/notifications';
+  // ==========================================
+  // 7. Attendance & Quran Progress
+  // ==========================================
+  /// GET: Returns authenticated student's active-batch attendance.
+  static const String studentAttendance = '/api/student/attendance';
 
-  /// Note the `/auth` prefix — this one is not namespaced under
-  /// `/student`. IDs may be numeric or UUIDs, so it takes a String.
-  static String notificationRead(String id) => '/auth/notifications/$id/read';
+  /// GET: Returns student's Quran progress snapshot, history, and curriculum reference.
+  static const String studentQuranProgress = '/api/student/quran-progress';
 
-  // ---- Group chat ----
-  static const String groupChats = '/group-chats';
-  static String groupChat(int id) => '/group-chats/$id';
-  static String groupChatMessages(int id) => '/group-chats/$id/messages';
-  static String groupChatSearch(int id) => '/group-chats/$id/search';
+  // ==========================================
+  // 8. Fees & Payments
+  // ==========================================
+  /// GET: Returns transactions, totals, due values, chart, and filters.
+  static const String studentTransactions = '/api/student/transactions';
+
+  /// GET: Returns transaction details by ID or transaction number.
+  static String studentTransactionDetail(String transactionNo) =>
+      '/api/student/transactions/$transactionNo';
+
+  /// GET: Returns unpaid and partially paid transactions.
+  static const String studentFeeDues = '/api/student/fees/dues';
+
+  /// GET: Returns paid transactions.
+  static const String studentFeeHistory = '/api/student/fees/history';
+
+  /// POST: Creates payment-gateway order data for owned transaction (form-data: id).
+  static const String studentFeePayInitiate = '/api/student/fees/pay/initiate';
+
+  /// GET: Returns temporary signed payment WebView URL.
+  static const String studentFeePayWebviewUrl =
+      '/api/student/fees/pay/webview-url';
+
+  /// POST: Verifies a Razorpay payment (form-data: transaction_id, razorpay_payment_id, ...).
+  static const String studentFeeRazorpayVerify =
+      '/api/student/fees/pay/razorpay/verify';
+
+  /// GET: Downloads PDF receipt for owned transaction.
+  static String studentFeeReceipt(int transactionId) =>
+      '/api/student/fees/receipt/$transactionId';
+
+  // ==========================================
+  // 9. Notices
+  // ==========================================
+  /// GET: Lists notices visible to the student.
+  static const String studentNotices = '/api/student/notices';
+
+  /// GET: Returns notice details.
+  static String studentNoticeDetail(int id) => '/api/student/notices/$id';
+
+  /// POST: Acknowledges notice visibility.
+  static String studentNoticeRead(int id) => '/api/student/notices/$id/read';
+
+  // ==========================================
+  // 10. Notifications & Devices
+  // ==========================================
+  /// GET: Lists student notifications and unread count.
+  static const String studentNotifications = '/api/student/notifications';
+
+  /// POST: Marks a notification as read.
+  static String studentNotificationRead(String id) =>
+      '/api/student/notifications/$id/read';
+
+  /// POST: Registers mobile FCM device token.
+  static const String studentFcmToken = '/api/student/fcm-token';
+
+  /// POST: Removes mobile FCM device token.
+  static const String studentFcmTokenRemove = '/api/student/fcm-token/remove';
+
+  // ==========================================
+  // 11. Support
+  // ==========================================
+  /// GET: Returns Admin Support and Help Center WhatsApp contacts.
+  static const String studentSupportContacts = '/api/student/support';
+
+  /// GET: Lists student's support tickets.
+  /// POST: Creates a new support ticket (multipart/form-data).
+  static const String studentTickets = '/api/student/tickets';
+
+  /// GET: Returns support ticket details with replies.
+  static String studentTicketDetail(int id) => '/api/student/tickets/$id';
+
+  /// POST: Adds a reply to an owned open ticket (multipart/form-data).
+  static String studentTicketReply(int id) =>
+      '/api/student/tickets/$id/reply';
+
+  // ==========================================
+  // 12. Public Frontend / Guest APIs
+  // ==========================================
+  /// GET: Public site layout data (branding, contact, social links).
+  static const String publicSite = '/api/public/site';
+
+  /// GET: Homepage data (sliders, featured courses, reviews).
+  static const String publicHome = '/api/public/home';
+
+  /// GET: Public course listing.
+  static const String publicCourses = '/api/public/courses';
+
+  /// GET: Public course details by slug.
+  static String publicCourseDetail(String slug) =>
+      '/api/public/courses/$slug';
+
+  /// GET: Published Quran surahs and topic groupings.
+  static const String publicQuran = '/api/public/quran';
+
+  /// GET: Published surah details by surah number.
+  static String publicQuranSurah(int surahNumber) =>
+      '/api/public/quran/surahs/$surahNumber';
+
+  /// GET: About page CMS content.
+  static const String publicAbout = '/api/public/about';
+
+  /// GET: Reviews page content.
+  static const String publicReviews = '/api/public/reviews';
+
+  /// GET: Contact page details.
+  /// POST: Submits guest contact form message (form-data).
+  static const String publicContact = '/api/public/contact';
+
+  /// GET: Enrollment checkout data for a course.
+  static String publicEnrollmentCheckout([String? slug]) =>
+      slug == null || slug.isEmpty
+          ? '/api/public/enrollment/checkout'
+          : '/api/public/enrollment/checkout/$slug';
+
+  /// POST: Checks if entered phone belongs to an existing student.
+  static const String publicEnrollmentCheckPhone =
+      '/api/public/enrollment/check-phone';
+
+  /// POST: Initiates enrollment payment with Razorpay order (form-data).
+  static const String publicEnrollmentInitiate =
+      '/api/public/enrollment/initiate';
+
+  /// POST: Completes enrollment payment after Razorpay success (form-data).
+  static const String publicEnrollmentComplete =
+      '/api/public/enrollment/complete';
 }

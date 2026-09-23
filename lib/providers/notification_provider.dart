@@ -106,6 +106,18 @@ class NotificationProvider extends BaseProvider {
     }
   }
 
+  Future<void> registerFcmToken(String token, {String? deviceType}) async {
+    try {
+      await _repo.registerFcmToken(token, deviceType: deviceType);
+    } catch (_) {}
+  }
+
+  Future<void> removeFcmToken(String token) async {
+    try {
+      await _repo.removeFcmToken(token);
+    } catch (_) {}
+  }
+
   void reset() {
     _items = [];
     _pagination = const Pagination();

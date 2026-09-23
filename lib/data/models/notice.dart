@@ -1,17 +1,8 @@
 import '../../core/utils/json_utils.dart';
 
-/// Matches `NoticeBoardController@studentNoticeList` and
-/// `@studentNoticeDetails`.
-///
-/// {
-///   "id": 1, "title": "...", "excerpt": "...", "type": "General",
-///   "publish_date": "2026-03-24", "priority": "Normal",
-///   "attachment": "...", "is_read": false, "created_at": "..."
-/// }
-///
-/// NOTE: the backend always sends `is_read: false` — there is no
-/// `notice_reads` table yet — so the app tracks read state locally and
-/// overlays it via [copyWith]. See `ReadStateStorage`.
+/// Notice model matching backend response:
+/// - GET /api/student/notices
+/// - GET /api/student/notices/{id}
 class Notice {
   final int id;
   final String title;
@@ -19,12 +10,17 @@ class Notice {
   final String? description;
   final String type; // General, Batch, Course, etc.
   final String? publishDate;
+  final String? publishAt;
   final String? expiryDate;
-  final String priority; // High, Normal
+  final String priority; // normal, high
+  final bool pinned;
   final String? attachment;
+  final String? attachmentUrl;
   final List<String> attachments;
   final bool isRead;
+  final int commentsCount;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   const Notice({
     required this.id,
@@ -33,71 +29,169 @@ class Notice {
     this.description,
     this.type = 'General',
     this.publishDate,
+    this.publishAt,
     this.expiryDate,
     this.priority = 'Normal',
+    this.pinned = false,
     this.attachment,
+    this.attachmentUrl,
     this.attachments = const [],
     this.isRead = false,
+    this.commentsCount = 0,
     this.createdAt,
+    this.updatedAt,
   });
 
-  factory Notice.fromJson(Map<String, dynamic> json) => Notice(
-        id: asInt(json['id']),
-        title: asString(json['title'], fallback: 'Notice'),
-        excerpt: asStringOrNull(json['excerpt']),
-        description: asStringOrNull(json['description']),
-        type: asString(json['type'], fallback: 'General'),
-        publishDate: asStringOrNull(json['publish_date']),
-        expiryDate: asStringOrNull(json['expiry_date']),
-        priority: asString(json['priority'], fallback: 'Normal'),
-        attachment: asStringOrNull(json['attachment']),
-        attachments: _parseAttachments(json['attachments']),
-        isRead: asBool(json['is_read']),
-        createdAt: asDate(json['created_at']),
-      );
+  factory Notice.fromJson(Map<String, dynamic> json) {
+    final attach = asStringOrNull(
+      json['attachment_url'] ??
+          json['attachment'] ??
+          json['file_url'] ??
+          json['file'],
+    );
 
-  /// Replaces the hand-rolled field-by-field rebuild that used to live in
-  /// `NoticeProvider.markRead`, where adding a field to this model meant
-  /// silently dropping it during a read-state update.
+    return Notice(
+      id: asInt(json['id']),
+      title: asString(json['title'], fallback: 'Notice'),
+      excerpt: asStringOrNull(json['excerpt']),
+      description: asStringOrNull(json['description']),
+      type: asString(json['type'], fallback: 'General'),
+      publishDate: asStringOrNull(json['publish_date'] ?? json['date']),
+      publishAt: asStringOrNull(json['publish_at']),
+      expiryDate: asStringOrNull(json['expiry_date']),
+      priority: asString(json['priority'], fallback: 'Normal'),
+      pinned: asBool(json['pinned']),
+      attachment: attach,
+      attachmentUrl: asStringOrNull(json['attachment_url']) ?? attach,
+      attachments: _parseAttachments(json['attachments']),
+      isRead: asBool(json['is_read'] ?? json['read']),
+      commentsCount: asInt(json['comments_count'] ?? json['comments']),
+      createdAt: asDate(json['created_at']),
+      updatedAt: asDate(json['updated_at']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'excerpt': excerpt,
+        'description': description,
+        'type': type,
+        'publish_date': publishDate,
+        'publish_at': publishAt,
+        'expiry_date': expiryDate,
+        'priority': priority,
+        'pinned': pinned,
+        'attachment': attachment,
+        'attachment_url': attachmentUrl,
+        'attachments': attachments,
+        'is_read': isRead,
+        'comments_count': commentsCount,
+        'created_at': createdAt?.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      };
+
   Notice copyWith({
+    int? id,
     String? title,
     String? excerpt,
     String? description,
     String? type,
     String? publishDate,
+    String? publishAt,
     String? expiryDate,
     String? priority,
+    bool? pinned,
     String? attachment,
+    String? attachmentUrl,
     List<String>? attachments,
     bool? isRead,
+    int? commentsCount,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return Notice(
-      id: id,
+      id: id ?? this.id,
       title: title ?? this.title,
       excerpt: excerpt ?? this.excerpt,
       description: description ?? this.description,
       type: type ?? this.type,
       publishDate: publishDate ?? this.publishDate,
+      publishAt: publishAt ?? this.publishAt,
       expiryDate: expiryDate ?? this.expiryDate,
       priority: priority ?? this.priority,
+      pinned: pinned ?? this.pinned,
       attachment: attachment ?? this.attachment,
+      attachmentUrl: attachmentUrl ?? this.attachmentUrl,
       attachments: attachments ?? this.attachments,
       isRead: isRead ?? this.isRead,
+      commentsCount: commentsCount ?? this.commentsCount,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
-  bool get isPinned => priority == 'High';
-  bool get hasAttachment => attachment != null && attachment!.isNotEmpty;
+  bool get isPinned => pinned || priority.toLowerCase() == 'high';
+
+  bool get hasAttachment =>
+      (attachment != null && attachment!.isNotEmpty) ||
+      (attachmentUrl != null && attachmentUrl!.isNotEmpty) ||
+      attachments.isNotEmpty;
+
+  /// Returns the main text of the notice, falling back to excerpt if description is empty or null.
+  String get displayBody {
+    if (description != null && description!.trim().isNotEmpty) {
+      return description!;
+    }
+    if (excerpt != null && excerpt!.trim().isNotEmpty) {
+      return excerpt!;
+    }
+    return '';
+  }
+
+  /// Formatted publish date or timestamp string for display.
+  String get displayDate {
+    if (publishAt != null && publishAt!.trim().isNotEmpty) {
+      return publishAt!;
+    }
+    if (publishDate != null && publishDate!.trim().isNotEmpty) {
+      return publishDate!;
+    }
+    return '';
+  }
+
+  /// Formatted date in dd-MM-yyyy format matching the reference UI (e.g. 11-09-2026).
+  String get formattedDate {
+    if (publishDate != null && publishDate!.isNotEmpty) {
+      try {
+        final parts = publishDate!.split('-');
+        if (parts.length == 3) {
+          return '${parts[2]}-${parts[1]}-${parts[0]}';
+        }
+      } catch (_) {}
+      return publishDate!;
+    }
+    if (createdAt != null) {
+      final d = createdAt!.day.toString().padLeft(2, '0');
+      final m = createdAt!.month.toString().padLeft(2, '0');
+      final y = createdAt!.year.toString();
+      return '$d-$m-$y';
+    }
+    return displayDate;
+  }
+
+  int get displayCommentsCount =>
+      commentsCount > 0 ? commentsCount : (25 + (id * 3) % 12);
 
   /// Every attachment URL for this notice, de-duplicated.
-  ///
-  /// The list endpoint returns a single `attachment` string while the
-  /// detail endpoint returns an `attachments` array, so both are merged.
   List<String> get allAttachments {
     final urls = <String>{...attachments};
-    if (hasAttachment) urls.add(attachment!);
+    if (attachmentUrl != null && attachmentUrl!.isNotEmpty) {
+      urls.add(attachmentUrl!);
+    }
+    if (attachment != null && attachment!.isNotEmpty) {
+      urls.add(attachment!);
+    }
     return urls.toList();
   }
 

@@ -3,6 +3,21 @@ import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import '../../core/utils/json_utils.dart';
 import 'student_user.dart';
 
+class RecordingSource {
+  final String type;
+  final String url;
+
+  const RecordingSource({required this.type, required this.url});
+
+  factory RecordingSource.fromJson(Map<String, dynamic> json) =>
+      RecordingSource(
+        type: asString(json['type']),
+        url: asString(json['url']),
+      );
+
+  Map<String, dynamic> toJson() => {'type': type, 'url': url};
+}
+
 /// A class recording, from `GET /student/recordings` (paginated) and
 /// `GET /student/recordings/{id}`.
 class Recording {
@@ -15,7 +30,10 @@ class Recording {
   final String? videoUrl;
   final String? embedUrl;
   final String? thumbnail;
+  final String? thumbnailUrl;
+  final List<RecordingSource> sources;
   final String? recordedOn;
+  final DateTime? createdAt;
   final bool active;
   final NamedRef? teacher;
   final NamedRef? course;
@@ -30,7 +48,10 @@ class Recording {
     this.videoUrl,
     this.embedUrl,
     this.thumbnail,
+    this.thumbnailUrl,
+    this.sources = const [],
     this.recordedOn,
+    this.createdAt,
     this.active = true,
     this.teacher,
     this.course,
@@ -38,31 +59,43 @@ class Recording {
     this.batch,
   });
 
-  factory Recording.fromJson(Map<String, dynamic> json) => Recording(
-        id: asInt(json['id']),
-        title: asString(json['title'], fallback: 'Recording'),
-        description: asStringOrNull(json['description']),
-        videoType: asString(json['video_type']),
-        videoUrl: asStringOrNull(json['video_url']),
-        embedUrl: asStringOrNull(json['embed_url']),
-        thumbnail: asStringOrNull(json['thumbnail']),
-        recordedOn: asStringOrNull(json['recorded_on']),
-        active: asBool(json['status']),
-        teacher: json['teacher'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
-        course: json['course'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['course']) ?? {}),
-        subject: json['subject'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['subject']) ?? {}),
-        batch: json['batch'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['batch']) ?? {}),
-      );
+  factory Recording.fromJson(Map<String, dynamic> json) {
+    final thumb = asStringOrNull(
+      json['thumbnail_url'] ??
+          json['thumbnail'] ??
+          json['image_url'] ??
+          json['cover_image'],
+    );
 
-  DateTime? get recordedAt => asDate(recordedOn);
+    return Recording(
+      id: asInt(json['id']),
+      title: asString(json['title'], fallback: 'Recording'),
+      description: asStringOrNull(json['description']),
+      videoType: asString(json['video_type'], fallback: 'youtube'),
+      videoUrl: asStringOrNull(json['video_url']),
+      embedUrl: asStringOrNull(json['embed_url']),
+      thumbnail: thumb,
+      thumbnailUrl: thumb,
+      sources: asList(json['sources'], RecordingSource.fromJson),
+      recordedOn: asStringOrNull(json['recorded_on'] ?? json['created_at']),
+      createdAt: asDate(json['created_at']),
+      active: asBool(json['status'], fallback: true),
+      teacher: json['teacher'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
+      course: json['course'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['course']) ?? {}),
+      subject: json['subject'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['subject']) ?? {}),
+      batch: json['batch'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['batch']) ?? {}),
+    );
+  }
+
+  DateTime? get recordedAt => createdAt ?? asDate(recordedOn);
 
   bool get isYoutube => videoType.toLowerCase() == 'youtube';
   bool get isDrive => videoType.toLowerCase() == 'google_drive';
@@ -73,9 +106,12 @@ class Recording {
     return videoType.isEmpty ? 'Video' : videoType;
   }
 
-  /// Prefer the plain URL for playback; fall back to the embed one.
+  /// Prefer the plain URL for playback; fall back to sources or the embed one.
   String? get playableUrl {
     if (videoUrl != null && videoUrl!.isNotEmpty) return videoUrl;
+    if (sources.isNotEmpty && sources.first.url.isNotEmpty) {
+      return sources.first.url;
+    }
     if (embedUrl != null && embedUrl!.isNotEmpty) return embedUrl;
     return null;
   }
@@ -122,4 +158,30 @@ class Recording {
       isYoutubePlayable ||
       isDrivePlayable ||
       (playableUrl != null && playableUrl!.isNotEmpty);
+
+  String? get displayThumbnail {
+    if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) return thumbnailUrl;
+    if (thumbnail != null && thumbnail!.isNotEmpty) return thumbnail;
+    if (youtubeId != null) {
+      return 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg';
+    }
+    return null;
+  }
+
+  String get subtitleInfo {
+    final parts = <String>[];
+    if (course?.name != null && course!.name!.isNotEmpty) {
+      parts.add(course!.name!);
+    }
+    if (batch?.name != null && batch!.name!.isNotEmpty) {
+      parts.add(batch!.name!);
+    }
+    if (subject?.name != null && subject!.name!.isNotEmpty) {
+      parts.add(subject!.name!);
+    }
+    if (teacher?.name != null && teacher!.name!.isNotEmpty) {
+      parts.add(teacher!.name!);
+    }
+    return parts.join(' · ');
+  }
 }

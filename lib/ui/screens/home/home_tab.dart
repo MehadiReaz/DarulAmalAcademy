@@ -15,7 +15,6 @@ import '../batches/my_batches_screen.dart';
 import '../courses/my_courses_screen.dart';
 import '../homework/homework_detail_screen.dart';
 import '../homework/homework_tab.dart';
-import '../lessons/lessons_screen.dart';
 import '../notices/notice_tab.dart';
 import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
@@ -1087,19 +1086,9 @@ class _QuickActionsGrid extends StatelessWidget {
           onTap: () => push(const RecordingsScreen()),
         ),
         _ModuleItem(
-          icon: Icons.auto_stories_outlined,
-          label: 'Lessons',
-          onTap: () => push(const LessonsScreen()),
-        ),
-        _ModuleItem(
           icon: Icons.fact_check_outlined,
           label: 'Attendance',
           onTap: () => push(const AttendanceScreen()),
-        ),
-        _ModuleItem(
-          icon: Icons.forum_outlined,
-          label: 'Group Chat',
-          onTap: () => goToTab(ShellTab.chat),
         ),
         _ModuleItem(
           icon: Icons.support_agent_rounded,

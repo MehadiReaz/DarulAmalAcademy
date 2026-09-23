@@ -23,9 +23,17 @@ class ApiClient {
   void Function()? onUnauthorized;
 
   ApiClient() {
+    String base = AppConfig.baseUrl.trim();
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+    if (base.endsWith('/api')) {
+      base = base.substring(0, base.length - 4);
+    }
+
     _dio = Dio(
       BaseOptions(
-        baseUrl: AppConfig.baseUrl,
+        baseUrl: base,
         connectTimeout: AppConfig.connectTimeout,
         receiveTimeout: AppConfig.receiveTimeout,
         headers: {
@@ -227,6 +235,41 @@ class ApiClient {
     } on DioException catch (e) {
       throw _toApiException(e);
     }
+  }
+
+  /// Convenience method to submit form-data as POST (required by Laravel student API).
+  Future<dynamic> postForm(String path, Map<String, dynamic> fields) {
+    final form = FormData.fromMap(fields);
+    return postMultipart(path, form);
+  }
+
+  /// Multipart PUT request.
+  Future<dynamic> putMultipart(String path, FormData form) async {
+    try {
+      final options = Options(
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null && _token!.isNotEmpty)
+            'Authorization': 'Bearer $_token',
+        },
+      );
+      final res = await _dio.request(
+        path,
+        data: form,
+        options: options,
+      );
+      logger.i('[API] Response: ${res.data}');
+      return _unwrap(res.data);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  /// Convenience method to submit form-data as PUT.
+  Future<dynamic> putForm(String path, Map<String, dynamic> fields) {
+    final form = FormData.fromMap(fields);
+    return putMultipart(path, form);
   }
 
   // ------------------------------------------------------------- internals

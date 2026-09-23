@@ -9,34 +9,69 @@ class NoticeRepository {
 
   NoticeRepository(this._client);
 
-  /// GET /student/notices  →  paginated notice list.
-  ///
-  /// The backend returns a Laravel paginator directly in `data`,
-  /// so the items live under `data.data` and pagination fields
-  /// (`current_page`, `last_page`, etc.) sit at the top level.
-  Future<Paginated<Notice>> list({int page = 1}) async {
+  /// GET /api/student/notices
+  Future<Paginated<Notice>> list({
+    int page = 1,
+    int? perPage,
+    String? keyword,
+  }) async {
+    final query = <String, dynamic>{'page': page};
+    if (perPage != null) query['per_page'] = perPage;
+    if (keyword != null && keyword.isNotEmpty) query['keyword'] = keyword;
+
     final data = await _client.get(
-      ApiEndpoints.notices,
-      query: {'page': page},
+      ApiEndpoints.studentNotices,
+      query: query,
     );
 
-    final map = asMap(data) ?? {};
+    dynamic rawList;
+    Map<String, dynamic> paginationMap = {};
 
-    // Laravel paginator: items are in `data` key, pagination at root.
-    final items = asList(map['data'], Notice.fromJson);
-    final pagination = Pagination.fromJson(map);
+    if (data is List) {
+      rawList = data;
+    } else if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      if (map['notices'] is Map) {
+        final noticesMap = Map<String, dynamic>.from(map['notices'] as Map);
+        paginationMap = noticesMap;
+        rawList = noticesMap['data'] ?? noticesMap['items'];
+      } else if (map['notices'] is List) {
+        rawList = map['notices'];
+        paginationMap = map;
+      } else if (map['data'] is List) {
+        rawList = map['data'];
+        paginationMap = map;
+      } else if (map['data'] is Map) {
+        final nested = Map<String, dynamic>.from(map['data'] as Map);
+        paginationMap = nested;
+        rawList = nested['data'] ?? nested['items'];
+      } else {
+        rawList = map['items'];
+        paginationMap = map;
+      }
+    }
+
+    final items = asList(rawList, Notice.fromJson);
+    final pagination = Pagination.fromJson(paginationMap);
 
     return Paginated(items: items, pagination: pagination);
   }
 
-  /// GET /student/notices/{id}  →  single notice detail.
+  /// GET /api/student/notices/{id}
   Future<Notice> detail(int id) async {
-    final data = await _client.get(ApiEndpoints.noticeDetail(id));
+    final data = await _client.get(ApiEndpoints.studentNoticeDetail(id));
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      final noticeObj = map['notice'] ?? map['data'] ?? map;
+      if (noticeObj is Map) {
+        return Notice.fromJson(Map<String, dynamic>.from(noticeObj));
+      }
+    }
     return Notice.fromJson(asMap(data) ?? {});
   }
 
-  /// POST /student/notices/{id}/read  →  mark as read.
+  /// POST /api/student/notices/{id}/read
   Future<void> markRead(int id) async {
-    await _client.post(ApiEndpoints.noticeRead(id));
+    await _client.postForm(ApiEndpoints.studentNoticeRead(id), {});
   }
 }

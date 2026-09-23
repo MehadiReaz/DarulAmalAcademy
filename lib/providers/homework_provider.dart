@@ -30,6 +30,8 @@ class HomeworkProvider extends BaseProvider {
         return _items.where((h) => h.isPending).toList();
       case HomeworkFilter.submitted:
         return _items.where((h) => h.isSubmitted).toList();
+      case HomeworkFilter.expired:
+        return _items.where((h) => h.isOverdue).toList();
       case HomeworkFilter.all:
         return _items;
     }
@@ -109,10 +111,14 @@ class HomeworkProvider extends BaseProvider {
           id: old.id,
           title: old.title,
           description: old.description,
+          course: old.course,
+          batch: old.batch,
           subject: old.subject,
           teacher: old.teacher,
           assignedDate: old.assignedDate,
           dueDate: old.dueDate,
+          status: 'Completed',
+          assignmentStatus: old.assignmentStatus,
           submissionStatus: 'submitted',
           submittedAt: DateTime.now(),
           marks: old.marks,

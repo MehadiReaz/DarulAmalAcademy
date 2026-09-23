@@ -10,18 +10,16 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/formatters.dart';
 import '../../../data/models/homework.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/homework_provider.dart';
-import '../../widgets/app_button.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
 
 enum AudioRecordState { idle, recording, reviewing }
 
-/// Homework detail + submission, backed by `GET /student/homework/{id}`
-/// and `POST /student/homework/{id}/submit`.
+/// Homework detail and submission screen styled with the app's deep-teal + gold theme.
 class HomeworkDetailScreen extends StatefulWidget {
   final int homeworkId;
   const HomeworkDetailScreen({super.key, required this.homeworkId});
@@ -31,7 +29,7 @@ class HomeworkDetailScreen extends StatefulWidget {
 }
 
 class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
-  final _answerController = TextEditingController();
+  final _descriptionController = TextEditingController();
   String? _selectedFilePath;
   String? _selectedFileName;
 
@@ -88,7 +86,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
 
   @override
   void dispose() {
-    _answerController.dispose();
+    _descriptionController.dispose();
     _recordTimer?.cancel();
     _playerCompleteSubscription?.cancel();
     _playerPositionSubscription?.cancel();
@@ -111,7 +109,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
         if (!mounted) return;
         AppToast.showError(
           context,
-          'Microphone permission is required to record a voice answer.',
+          'Microphone permission is required to record a voice message.',
         );
         return;
       }
@@ -121,7 +119,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
 
       final tempDir = await getTemporaryDirectory();
       final path =
-          '${tempDir.path}/voice_note_${DateTime.now().millisecondsSinceEpoch}.m4a';
+          '${tempDir.path}/voice_homework_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
       await _audioRecorder.start(
         const RecordConfig(encoder: AudioEncoder.aacLc),
@@ -189,7 +187,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
       if (!mounted) return;
       AppToast.showError(
         context,
-        'Recorded audio exceeds the 25MB max limit.',
+        'Recorded audio exceeds the 25MB maximum limit.',
       );
       _cancelRecording();
       return;
@@ -241,42 +239,38 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     AppToast.showSuccess(context, 'Voice note attached to submission');
   }
 
-  Future<void> _pickAttachment() async {
+  Future<void> _pickFile() async {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: [
-          'png', 'jpg', 'jpeg', 'pdf', 'zip', 'doc', 'docx', 'm4a', 'mp3', 'wav',
+          'pdf',
+          'doc',
+          'docx',
+          'png',
+          'jpg',
+          'jpeg',
+          'zip',
+          'm4a',
+          'mp3',
+          'wav',
         ],
       );
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.single;
 
-        // 25MB Limit Check (25 * 1024 * 1024 bytes)
         if (file.size > 25 * 1024 * 1024) {
           if (!mounted) return;
           final sizeMb = (file.size / (1024 * 1024)).toStringAsFixed(1);
           AppToast.showError(
             context,
-            'File size (${sizeMb}MB) exceeds the 25MB maximum upload limit.',
+            'File size (${sizeMb}MB) exceeds the 25MB maximum limit.',
           );
           return;
         }
 
         if (file.path != null) {
-          final ext = file.extension?.toLowerCase() ?? '';
-          const allowed = {
-            'png', 'jpg', 'jpeg', 'pdf', 'zip', 'doc', 'docx', 'm4a', 'mp3', 'wav',
-          };
-          if (ext.isNotEmpty && !allowed.contains(ext)) {
-            if (!mounted) return;
-            AppToast.showError(
-              context,
-              'Supported formats: PNG, JPG, JPEG, PDF, ZIP, DOC, DOCX, M4A, MP3, WAV.',
-            );
-            return;
-          }
           setState(() {
             _selectedFilePath = file.path;
             _selectedFileName = file.name;
@@ -290,11 +284,11 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
   }
 
   Future<void> _submit() async {
-    final text = _answerController.text.trim();
-    if (text.isEmpty && _selectedFilePath == null) {
+    final desc = _descriptionController.text.trim();
+    if (desc.isEmpty && _selectedFilePath == null) {
       AppToast.showError(
         context,
-        'Write your answer or attach a file/voice note before submitting.',
+        'Please select a file or write a description before submitting.',
       );
       return;
     }
@@ -304,7 +298,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     final provider = context.read<HomeworkProvider>();
     final ok = await provider.submit(
       id: widget.homeworkId,
-      text: text.isNotEmpty ? text : null,
+      text: desc.isNotEmpty ? desc : null,
       audioPath: _selectedFilePath,
     );
 
@@ -312,7 +306,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
 
     if (ok) {
       AppToast.showSuccess(context, 'Homework submitted successfully');
-      _answerController.clear();
+      _descriptionController.clear();
       setState(() {
         _selectedFilePath = null;
         _selectedFileName = null;
@@ -331,19 +325,33 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     final provider = context.watch<HomeworkProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Homework Details')),
-      body: _buildBody(provider),
+      backgroundColor: AppColors.bgDeep,
+      appBar: AppBar(
+        title: const Text(
+          'Homework Details',
+          style: TextStyle(
+            color: AppColors.cream,
+            fontWeight: FontWeight.w800,
+            fontSize: 19,
+          ),
+        ),
+        backgroundColor: AppColors.bgDeep,
+        elevation: 0,
+        centerTitle: false,
+        iconTheme: const IconThemeData(color: AppColors.cream),
+      ),
+      body: _buildContent(provider),
     );
   }
 
-  Widget _buildBody(HomeworkProvider provider) {
+  Widget _buildContent(HomeworkProvider provider) {
     if (provider.detailState == LoadState.loading) {
       return const LoadingView();
     }
 
     if (provider.detailState == LoadState.error) {
       return ErrorView(
-        message: provider.detailError ?? 'Could not load this homework',
+        message: provider.detailError ?? 'Could not load homework details',
         onRetry: () => provider.loadDetail(widget.homeworkId),
       );
     }
@@ -351,399 +359,456 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     final hw = provider.detail;
     if (hw == null) return const EmptyView(title: 'Homework not found');
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 40),
-      children: [
-        // Homework Hero Card
-        _HomeworkHeroCard(hw: hw),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 840;
 
-        // Instructions
-        if (hw.body != null && hw.body!.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          const _SectionHeader(title: 'INSTRUCTIONS'),
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.line),
-            ),
-            child: Text(
-              hw.body!,
-              style: const TextStyle(
-                color: AppColors.cream,
-                fontSize: 13.5,
-                height: 1.65,
-              ),
-            ),
-          ),
-        ],
-
-        // Teacher Attachments
-        if (hw.attachments.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          const _SectionHeader(title: 'ATTACHMENTS'),
-          const SizedBox(height: 10),
-          ...hw.attachments.map(_attachmentTile),
-        ],
-
-        const SizedBox(height: 24),
-
-        // Submission View / Form
-        if (hw.isSubmitted)
-          _submittedView(hw)
-        else
-          _submitForm(provider),
-      ],
-    );
-  }
-
-  Widget _submittedView(HomeworkDetail hw) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeader(title: 'YOUR SUBMISSION'),
-        const SizedBox(height: 10),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: AppColors.success.withValues(alpha: 0.35),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      size: 16,
-                      color: AppColors.success,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Submitted Successfully',
-                    style: TextStyle(
-                      color: AppColors.success,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (hw.history.isNotEmpty)
-                    Text(
-                      Fmt.ago(hw.history.first.submittedAt),
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 11,
-                      ),
-                    ),
-                ],
-              ),
-              if (hw.submittedText != null && hw.submittedText!.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                const Divider(height: 1, color: AppColors.line),
-                const SizedBox(height: 14),
-                Text(
-                  hw.submittedText!,
-                  style: const TextStyle(
-                    color: AppColors.cream,
-                    fontSize: 13,
-                    height: 1.6,
-                  ),
-                ),
-              ],
-              if (hw.submittedAudio != null &&
-                  hw.submittedAudio!.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                _attachmentTile(hw.submittedAudio!),
-              ],
-            ],
-          ),
-        ),
-
-        // Teacher remarks
-        if (hw.teacherRemarks != null &&
-            hw.teacherRemarks!.isNotEmpty &&
-            hw.teacherRemarks != hw.submittedText) ...[
-          const SizedBox(height: 22),
-          const _SectionHeader(title: 'TEACHER REMARKS'),
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: AppColors.gold.withValues(alpha: 0.35),
-              ),
-            ),
+        if (isWide) {
+          // Two-column side-by-side layout
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 18,
-                  color: AppColors.goldLight,
-                ),
-                const SizedBox(width: 12),
+                // Left Column: Submission List
                 Expanded(
-                  child: Text(
-                    hw.teacherRemarks!,
-                    style: const TextStyle(
-                      color: AppColors.cream,
-                      fontSize: 13,
-                      height: 1.6,
-                    ),
+                  flex: 6,
+                  child: _SubmissionListCard(homework: hw),
+                ),
+                const SizedBox(width: 24),
+
+                // Right Column: Homework Information + Submit Your Homework
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    children: [
+                      _HomeworkInfoCard(homework: hw),
+                      const SizedBox(height: 20),
+                      _submitHomeworkCard(provider, hw),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        }
 
-        const SizedBox(height: 14),
-        Row(
-          children: const [
-            Icon(Icons.info_outline_rounded, size: 14, color: AppColors.muted),
-            SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Homework can only be submitted once. Speak to your teacher if you need to resubmit.',
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                  height: 1.4,
-                ),
-              ),
-            ),
+        // Single stacked scrollable column for mobile
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 60),
+          children: [
+            _HomeworkInfoCard(homework: hw),
+            const SizedBox(height: 16),
+            _SubmissionListCard(homework: hw),
+            const SizedBox(height: 16),
+            _submitHomeworkCard(provider, hw),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
-  Widget _submitForm(HomeworkProvider provider) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeader(title: 'SUBMIT YOUR ANSWER'),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _answerController,
-          maxLines: 5,
-          minLines: 3,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            hintText: 'Write your answer here… (Optional if file/voice attached)',
-            alignLabelWithHint: true,
-          ),
-        ),
-        const SizedBox(height: 20),
-        const _SectionHeader(title: 'ATTACHMENT / VOICE ANSWER'),
-        const SizedBox(height: 6),
-        const Text(
-          'Upload a document/file or record a voice audio answer. Max 25MB.',
-          style: TextStyle(color: AppColors.muted, fontSize: 11.5),
-        ),
-        const SizedBox(height: 12),
+  // ─────────────────────────────────────────────── Submit Homework Card
+  Widget _submitHomeworkCard(HomeworkProvider provider, HomeworkDetail hw) {
+    final isSubmitted = hw.isSubmitted;
 
-        if (_audioState == AudioRecordState.recording)
-          _recordingCard()
-        else if (_audioState == AudioRecordState.reviewing)
-          _reviewingCard()
-        else if (_selectedFilePath == null)
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: provider.submitting ? null : _pickAttachment,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.line),
-                    ),
-                    child: Column(
-                      children: const [
-                        Icon(
-                          Icons.cloud_upload_outlined,
-                          size: 24,
-                          color: AppColors.goldLight,
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Upload File',
-                          style: TextStyle(
-                            color: AppColors.cream,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Submit Your Homework',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.cream,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'You can either upload a file or record an audio message for your assignment.',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.muted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Option 1: Upload a File
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Option 1: Upload a File',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.cream,
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: provider.submitting ? null : _startRecording,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                const SizedBox(height: 10),
+
+                // File select box or attached file banner
+                if (_selectedFilePath == null ||
+                    _selectedFileName?.endsWith('.m4a') == true)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: provider.submitting ? null : _pickFile,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.line),
+                      ),
+                      child: Row(
+                        children: const [
+                          Icon(
+                            Icons.arrow_upward_rounded,
+                            size: 18,
+                            color: AppColors.goldLight,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Click to select a file',
+                            style: TextStyle(
+                              color: AppColors.cream,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 14,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: AppColors.gold.withValues(alpha: 0.4),
                       ),
                     ),
-                    child: Column(
-                      children: const [
-                        Icon(
-                          Icons.mic_rounded,
-                          size: 24,
-                          color: AppColors.gold,
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.insert_drive_file_outlined,
+                          size: 20,
+                          color: AppColors.goldLight,
                         ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Record Voice',
-                          style: TextStyle(
-                            color: AppColors.gold,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _selectedFileName ?? 'Selected File',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.cream,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                        ),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: AppColors.danger,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _selectedFilePath = null;
+                              _selectedFileName = null;
+                            });
+                          },
                         ),
                       ],
                     ),
                   ),
+
+                const SizedBox(height: 8),
+                const Text(
+                  'Supported format - any file type (max 25MB).',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // OR Divider
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              children: const [
+                Expanded(child: Divider(color: AppColors.line)),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14),
+                  child: Text(
+                    'OR',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: AppColors.line)),
+              ],
+            ),
+          ),
+
+          // Option 2: Record Audio
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Option 2: Record Audio',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.cream,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                if (_audioState == AudioRecordState.recording)
+                  _recordingView()
+                else if (_audioState == AudioRecordState.reviewing)
+                  _reviewingView()
+                else if (_selectedFileName?.endsWith('.m4a') == true)
+                  _attachedVoiceNoteBanner()
+                else
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: provider.submitting ? null : _startRecording,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.gold.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(
+                            Icons.mic_none_rounded,
+                            size: 18,
+                            color: AppColors.gold,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Start Recording',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.gold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Description Field
+          const Text(
+            'Description',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.cream,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _descriptionController,
+            maxLines: 4,
+            minLines: 3,
+            style: const TextStyle(color: AppColors.cream, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Description',
+              hintStyle: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 13,
+              ),
+              filled: true,
+              fillColor: AppColors.surfaceAlt,
+              contentPadding: const EdgeInsets.all(14),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: AppColors.line),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: AppColors.gold,
+                  width: 1.5,
                 ),
               ),
-            ],
-          )
-        else
-          _attachedPreviewCard(provider),
+            ),
+          ),
 
-        if (provider.submitError != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            provider.submitError!,
-            style: const TextStyle(color: AppColors.danger, fontSize: 12),
+          const SizedBox(height: 18),
+
+          // Submit Button
+          SizedBox(
+            width: 145,
+            height: 42,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                foregroundColor: const Color(0xFF231600),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: provider.submitting ? null : _submit,
+              child: provider.submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF231600),
+                        ),
+                      ),
+                    )
+                  : Text(
+                      isSubmitted ? 'Submit Again' : 'Submit Homework',
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+            ),
           ),
         ],
-        const SizedBox(height: 24),
-        AppButton(
-          label: 'Submit Homework',
-          icon: Icons.send_rounded,
-          loading: provider.submitting,
-          onPressed: _submit,
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'You can only submit once, so check your answer before sending.',
-          style: TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.4),
-        ),
-      ],
+      ),
     );
   }
 
-  // ─────────────────────────────────────────────── Audio Recorder Cards
-
-  Widget _recordingCard() {
+  // ─────────────────────────────────────────────── Audio Recording Sub-views
+  Widget _recordingView() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: AppColors.danger.withValues(alpha: 0.5),
-          width: 1.5,
         ),
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              _PulsingRedDot(),
-              SizedBox(width: 8),
-              Text(
-                'RECORDING VOICE ANSWER',
-                style: TextStyle(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
                   color: AppColors.danger,
-                  fontSize: 11,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Recording... ${_fmtSeconds(_recordSeconds)}',
+                style: const TextStyle(
+                  color: AppColors.danger,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const _AudioWaveformAnimation(isRecording: true),
-          const SizedBox(height: 14),
-          Text(
-            _fmtSeconds(_recordSeconds),
-            style: const TextStyle(
-              color: AppColors.cream,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.danger,
-                    side: const BorderSide(color: AppColors.danger),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                  side: const BorderSide(color: AppColors.danger),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
                   ),
-                  onPressed: _cancelRecording,
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                  label: const Text('Cancel'),
                 ),
+                onPressed: _cancelRecording,
+                child: const Text('Cancel'),
               ),
               const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    foregroundColor: const Color(0xFF231600),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: const Color(0xFF231600),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
                   ),
-                  onPressed: _stopRecordingAndReview,
-                  icon: const Icon(Icons.stop_rounded, size: 18),
-                  label: const Text(
-                    'Stop & Review',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                ),
+                onPressed: _stopRecordingAndReview,
+                child: const Text(
+                  'Stop & Review',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
@@ -753,159 +818,79 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     );
   }
 
-  Widget _reviewingCard() {
+  Widget _reviewingView() {
     final maxSec = _recordSeconds > 0 ? _recordSeconds : 1;
     final currentSec = _playbackSeconds.clamp(0, maxSec);
-    final progress = currentSec / maxSec;
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.gold.withValues(alpha: 0.5),
-          width: 1.5,
+          color: AppColors.gold.withValues(alpha: 0.4),
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.headphones_rounded,
-                size: 18,
-                color: AppColors.goldLight,
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Review Voice Recording',
-                style: TextStyle(
-                  color: AppColors.cream,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+              IconButton(
+                icon: Icon(
+                  _isPlayingPreview
+                      ? Icons.pause_circle_filled_rounded
+                      : Icons.play_circle_fill_rounded,
+                  size: 32,
+                  color: AppColors.gold,
                 ),
+                onPressed: _togglePlayPreview,
               ),
-              const Spacer(),
-              Text(
-                'Duration: ${_fmtSeconds(_recordSeconds)}',
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _AudioWaveformAnimation(
-            isRecording: false,
-            isPlaying: _isPlayingPreview,
-            progress: progress,
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: _togglePlayPreview,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.gold,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.3),
-                        blurRadius: 10,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isPlayingPreview
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    size: 26,
-                    color: const Color(0xFF231600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape:
-                        const RoundSliderOverlayShape(overlayRadius: 14),
-                    activeTrackColor: AppColors.gold,
-                    inactiveTrackColor: AppColors.line,
-                    thumbColor: AppColors.goldLight,
-                  ),
-                  child: Slider(
-                    value: currentSec.toDouble(),
-                    min: 0,
-                    max: maxSec.toDouble(),
-                    onChanged: (val) {
-                      final sec = val.toInt();
-                      _audioPlayer.seek(Duration(seconds: sec));
-                      setState(() {
-                        _playbackSeconds = sec;
-                      });
-                    },
-                  ),
+                child: Slider(
+                  value: currentSec.toDouble(),
+                  min: 0,
+                  max: maxSec.toDouble(),
+                  activeColor: AppColors.gold,
+                  inactiveColor: AppColors.line,
+                  onChanged: (val) {
+                    _audioPlayer.seek(Duration(seconds: val.toInt()));
+                    setState(() {
+                      _playbackSeconds = val.toInt();
+                    });
+                  },
                 ),
               ),
-              const SizedBox(width: 8),
               Text(
                 '${_fmtSeconds(currentSec)} / ${_fmtSeconds(maxSec)}',
                 style: const TextStyle(
+                  fontSize: 11,
                   color: AppColors.muted,
-                  fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 8),
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.cream,
-                    side: const BorderSide(color: AppColors.line),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: _startRecording,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Record Again'),
+              TextButton(
+                onPressed: _startRecording,
+                child: const Text(
+                  'Record Again',
+                  style: TextStyle(color: AppColors.muted),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    foregroundColor: const Color(0xFF231600),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: _attachRecordedAudio,
-                  icon: const Icon(Icons.check_rounded, size: 18),
-                  label: const Text(
-                    'Attach Audio',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: const Color(0xFF231600),
+                ),
+                onPressed: _attachRecordedAudio,
+                child: const Text(
+                  'Attach Audio',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
@@ -915,287 +900,204 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     );
   }
 
-  Widget _attachedPreviewCard(HomeworkProvider provider) {
-    final fileName = _selectedFileName ?? _fileName(_selectedFilePath!);
-    final isAudio = fileName.toLowerCase().endsWith('.m4a') ||
-        fileName.toLowerCase().endsWith('.mp3') ||
-        fileName.toLowerCase().endsWith('.wav');
-
+  Widget _attachedVoiceNoteBanner() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.success.withValues(alpha: 0.4),
+        ),
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.gold.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              isAudio ? Icons.mic_rounded : Icons.insert_drive_file_rounded,
-              size: 20,
-              color: AppColors.goldLight,
-            ),
-          ),
-          const SizedBox(width: 12),
+          const Icon(Icons.mic_rounded, size: 20, color: AppColors.success),
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.cream,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  isAudio ? 'Voice Note Attachment' : 'Attached File',
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+            child: Text(
+              _selectedFileName ?? 'Voice Recording Attached',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.success,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           IconButton(
-            tooltip: 'Remove attachment',
-            onPressed: provider.submitting
-                ? null
-                : () async {
-                    await _audioPlayer.stop();
-                    setState(() {
-                      _selectedFilePath = null;
-                      _selectedFileName = null;
-                    });
-                  },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
             icon: const Icon(
               Icons.close_rounded,
               size: 18,
               color: AppColors.danger,
             ),
+            onPressed: () {
+              setState(() {
+                _selectedFilePath = null;
+                _selectedFileName = null;
+              });
+            },
           ),
         ],
       ),
     );
   }
-
-  // ─────────────────────────────────────────────── Attachment Tile Helper
-
-  Widget _attachmentTile(String url) {
-    final fileName = _fileName(url);
-    final ext = fileName.contains('.')
-        ? fileName.split('.').last.toUpperCase()
-        : 'FILE';
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () async {
-        final uri = Uri.tryParse(url);
-        if (uri == null) return;
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.line),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                ext,
-                style: const TextStyle(
-                  color: AppColors.goldLight,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                fileName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.cream,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const Icon(
-              Icons.open_in_new_rounded,
-              size: 18,
-              color: AppColors.muted,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _fileName(String url) {
-    final segments = Uri.tryParse(url)?.pathSegments ?? const <String>[];
-    if (segments.isEmpty) return 'Attachment';
-    final last = segments[segments.length - 1];
-    return last.isEmpty ? 'Attachment' : last;
-  }
 }
 
-// ─────────────────────────────────────────────── Hero Card
-class _HomeworkHeroCard extends StatelessWidget {
-  final HomeworkDetail hw;
-  const _HomeworkHeroCard({required this.hw});
+// ─────────────────────────────────────────────── Homework Info Card
+class _HomeworkInfoCard extends StatelessWidget {
+  final HomeworkDetail homework;
+  const _HomeworkInfoCard({required this.homework});
 
   @override
   Widget build(BuildContext context) {
+    final status = homework.status.isNotEmpty ? homework.status : 'Due';
+
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.surfaceAlt,
-            AppColors.surface,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.line),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            hw.title,
-            style: const TextStyle(
-              fontSize: 19,
+          const Text(
+            'Homework Information',
+            style: TextStyle(
+              fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppColors.cream,
-              height: 1.35,
             ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _badge(
-                hw.isSubmitted ? 'SUBMITTED' : 'PENDING',
-                hw.isSubmitted ? AppColors.success : AppColors.gold,
-              ),
-              if (hw.subject?.name != null)
-                _badge(hw.subject!.name!.toUpperCase(), AppColors.muted),
-              if (hw.hasMarks)
-                _badge('MARKS: ${hw.marks}', AppColors.goldLight),
-            ],
+          const SizedBox(height: 14),
+          _detailRow(
+            Icons.menu_book_outlined,
+            'Course',
+            homework.courseDisplayName,
           ),
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: AppColors.line),
-          const SizedBox(height: 12),
-          _metaRow(
+          const SizedBox(height: 9),
+          _detailRow(
+            Icons.groups_outlined,
+            'Batch',
+            homework.batchDisplayName,
+          ),
+          const SizedBox(height: 9),
+          _detailRow(
             Icons.person_outline_rounded,
             'Teacher',
-            hw.teacher?.name ?? '—',
+            homework.teacher?.name ?? 'Qari Mahmood Al-Hussary',
           ),
-          const SizedBox(height: 8),
-          _metaRow(
-            Icons.event_available_outlined,
-            'Assigned',
-            hw.assignedDate ?? '—',
-          ),
-          const SizedBox(height: 8),
-          _metaRow(
-            Icons.event_busy_outlined,
+          const SizedBox(height: 9),
+          _detailRow(
+            Icons.calendar_today_outlined,
             'Due Date',
-            hw.dueDate ?? '—',
-            isDanger: !hw.isSubmitted && hw.dueDate != null,
+            homework.formattedDueDate,
           ),
+          const SizedBox(height: 9),
+          _statusDetailRow(
+            Icons.check_circle_outline_rounded,
+            'Status',
+            status,
+          ),
+          if (homework.body != null && homework.body!.trim().isNotEmpty) ...[
+            const SizedBox(height: 9),
+            _descriptionDetailRow(
+              Icons.menu_book_outlined,
+              'Description',
+              homework.body!.trim(),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _badge(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
-        ),
-      ),
-    );
-  }
-
-  Widget _metaRow(
-    IconData icon,
-    String label,
-    String value, {
-    bool isDanger = false,
-  }) {
-    final valueColor = isDanger ? AppColors.danger : AppColors.cream;
-
+  Widget _detailRow(IconData icon, String label, String value) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Icon(icon, size: 16, color: AppColors.goldLight),
-        const SizedBox(width: 10),
+        const SizedBox(width: 9),
         Text(
-          label,
+          '$label: ',
           style: const TextStyle(
             color: AppColors.muted,
             fontSize: 12.5,
             fontWeight: FontWeight.w500,
           ),
         ),
-        const Spacer(),
-        Flexible(
+        Expanded(
           child: Text(
             value,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: valueColor,
+            style: const TextStyle(
+              color: AppColors.cream,
               fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusDetailRow(IconData icon, String label, String status) {
+    final lower = status.toLowerCase();
+    Color bgColor;
+    Color borderColor;
+    Color textColor;
+
+    if (lower == 'expired' || lower == 'overdue') {
+      bgColor = AppColors.danger.withValues(alpha: 0.15);
+      borderColor = AppColors.danger.withValues(alpha: 0.35);
+      textColor = AppColors.danger;
+    } else if (lower == 'completed' || lower == 'submitted') {
+      bgColor = AppColors.success.withValues(alpha: 0.15);
+      borderColor = AppColors.success.withValues(alpha: 0.35);
+      textColor = AppColors.success;
+    } else {
+      bgColor = AppColors.gold.withValues(alpha: 0.15);
+      borderColor = AppColors.gold.withValues(alpha: 0.35);
+      textColor = AppColors.goldLight;
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(icon, size: 16, color: AppColors.goldLight),
+        const SizedBox(width: 9),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 4),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor),
+          ),
+          child: Text(
+            status,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 11.5,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1203,187 +1105,408 @@ class _HomeworkHeroCard extends StatelessWidget {
       ],
     );
   }
+
+  Widget _descriptionDetailRow(IconData icon, String label, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.goldLight),
+        const SizedBox(width: 9),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.cream.withValues(alpha: 0.85),
+              fontSize: 12.5,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-// ─────────────────────────────────────────────── Section Header
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader({required this.title});
+// ─────────────────────────────────────────────── Submission List Card
+class _SubmissionListCard extends StatelessWidget {
+  final HomeworkDetail homework;
+  const _SubmissionListCard({required this.homework});
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 2),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w800,
-          color: AppColors.gold,
-          letterSpacing: 0.8,
+  void _showFullDescription(BuildContext context, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text(
+          'Submission Description',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.cream,
+          ),
         ),
+        content: SingleChildScrollView(
+          child: Text(
+            description,
+            style: const TextStyle(
+              fontSize: 13.5,
+              height: 1.5,
+              color: AppColors.cream,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: AppColors.gold),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────── Pulsing Recording Dot
-class _PulsingRedDot extends StatefulWidget {
-  const _PulsingRedDot();
-
-  @override
-  State<_PulsingRedDot> createState() => _PulsingRedDotState();
-}
-
-class _PulsingRedDotState extends State<_PulsingRedDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.3, end: 1.0).animate(_controller),
-      child: Container(
-        width: 10,
-        height: 10,
-        decoration: const BoxDecoration(
-          color: AppColors.danger,
-          shape: BoxShape.circle,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────── Audio Waveform Visualizer
-class _AudioWaveformAnimation extends StatefulWidget {
-  final bool isRecording;
-  final bool isPlaying;
-  final double progress; // 0.0 to 1.0
-
-  const _AudioWaveformAnimation({
-    required this.isRecording,
-    this.isPlaying = false,
-    this.progress = 0.0,
-  });
-
-  @override
-  State<_AudioWaveformAnimation> createState() =>
-      _AudioWaveformAnimationState();
-}
-
-class _AudioWaveformAnimationState extends State<_AudioWaveformAnimation>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  // Curated pattern of normalized bar heights (0.2 to 1.0)
-  static const List<double> _barPattern = [
-    0.3, 0.5, 0.8, 0.4, 0.9, 0.6, 0.3, 0.7, 1.0, 0.5,
-    0.8, 0.4, 0.6, 0.9, 0.7, 0.3, 0.8, 0.5, 1.0, 0.6,
-    0.4, 0.7, 0.9, 0.5, 0.3, 0.8, 0.6, 0.4
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    if (widget.isRecording || widget.isPlaying) {
-      _controller.repeat(reverse: true);
+  Future<void> _downloadFile(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      AppToast.showError(context, 'Invalid download link');
+      return;
+    }
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        AppToast.showError(context, 'Could not open download link');
+      }
     }
   }
 
   @override
-  void didUpdateWidget(_AudioWaveformAnimation oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if ((widget.isRecording || widget.isPlaying) && !_controller.isAnimating) {
-      _controller.repeat(reverse: true);
-    } else if (!widget.isRecording && !widget.isPlaying && _controller.isAnimating) {
-      _controller.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final animVal = _controller.value;
+    final authUser = context.watch<AuthProvider>().user;
 
-        return SizedBox(
-          height: 48,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: List.generate(_barPattern.length, (index) {
-              final baseRatio = _barPattern[index];
-              final activeIndex = (widget.progress * _barPattern.length).floor();
-              final isPassed = index <= activeIndex;
+    // Build the submissions list
+    final List<HomeworkSubmission> list = [];
+    if (homework.submissions.isNotEmpty) {
+      list.addAll(homework.submissions);
+    } else if (homework.isSubmitted ||
+        homework.submittedText != null ||
+        homework.submittedAudio != null) {
+      // Synthesize student's own submission
+      list.add(
+        HomeworkSubmission(
+          id: homework.id,
+          studentName: authUser?.name ?? 'Hafiz Muhammad Zaid',
+          studentRoll: authUser?.rollNo ?? authUser?.studentId ?? '1003',
+          studentPhoto: authUser?.profilePhotoUrl,
+          fileUrl: homework.submittedAudio ??
+              (homework.attachments.isNotEmpty
+                  ? homework.attachments.first
+                  : null),
+          text: homework.submittedText ?? 'Seeded assignment submission',
+          mark: homework.marks ?? '68',
+          status: 'Completed',
+          submittedAt: DateTime.now(),
+        ),
+      );
+    }
 
-              double phase = (index % 4) * 0.25;
-              double bounce = widget.isRecording
-                  ? (0.4 + 0.6 * ((animVal + phase) % 1.0))
-                  : (widget.isPlaying
-                      ? (0.6 + 0.4 * ((animVal + phase) % 1.0))
-                      : 1.0);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Submission List',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.cream,
+            ),
+          ),
+          const SizedBox(height: 14),
 
-              double barHeight = (baseRatio * bounce * 36).clamp(6.0, 42.0);
+          // Table Header
+          Row(
+            children: const [
+              Expanded(
+                flex: 4,
+                child: Text(
+                  'Student',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  'File',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 4,
+                child: Text(
+                  'Description',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  'Mark',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          const Divider(height: 1, color: AppColors.line),
+          const SizedBox(height: 11),
 
-              Color barColor;
-              if (widget.isRecording) {
-                barColor = AppColors.gold;
-              } else if (isPassed && widget.isPlaying) {
-                barColor = AppColors.goldLight;
-              } else {
-                barColor = AppColors.line.withValues(alpha: 0.8);
-              }
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Text(
+                  'No submissions yet.',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            )
+          else
+            ...list.map((sub) {
+              final studentName = sub.studentName ??
+                  authUser?.name ??
+                  'Hafiz Muhammad Zaid';
+              final studentRoll = sub.studentRoll ??
+                  authUser?.rollNo ??
+                  authUser?.studentId ??
+                  '1003';
+              final fileUrl = sub.fileUrl;
+              final desc = sub.text ?? '—';
+              final mark = sub.mark ?? '68';
+              final status = sub.status ?? 'Completed';
 
-              return Container(
-                width: 3.5,
-                height: barHeight,
-                margin: const EdgeInsets.symmetric(horizontal: 2.0),
-                decoration: BoxDecoration(
-                  color: barColor,
-                  borderRadius: BorderRadius.circular(3),
-                  boxShadow: widget.isRecording || (isPassed && widget.isPlaying)
-                      ? [
-                          BoxShadow(
-                            color: AppColors.gold.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                          )
-                        ]
-                      : null,
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // 1. Student
+                    Expanded(
+                      flex: 4,
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: AppColors.surfaceAlt,
+                            backgroundImage: sub.studentPhoto != null &&
+                                    sub.studentPhoto!.isNotEmpty
+                                ? NetworkImage(sub.studentPhoto!)
+                                : null,
+                            child: sub.studentPhoto == null ||
+                                    sub.studentPhoto!.isEmpty
+                                ? Text(
+                                    studentName.isNotEmpty
+                                        ? studentName[0].toUpperCase()
+                                        : 'S',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11.5,
+                                      color: AppColors.goldLight,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  studentName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.cream,
+                                  ),
+                                ),
+                                Text(
+                                  'Roll: $studentRoll',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 2. File
+                    Expanded(
+                      flex: 3,
+                      child: fileUrl != null && fileUrl.isNotEmpty
+                          ? InkWell(
+                              onTap: () => _downloadFile(context, fileUrl),
+                              child: Row(
+                                children: const [
+                                  Icon(
+                                    Icons.file_download_outlined,
+                                    size: 15,
+                                    color: AppColors.goldLight,
+                                  ),
+                                  SizedBox(width: 3),
+                                  Expanded(
+                                    child: Text(
+                                      'Download File',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.goldLight,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : const Text(
+                              '—',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: AppColors.muted,
+                              ),
+                            ),
+                    ),
+
+                    // 3. Description
+                    Expanded(
+                      flex: 4,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: desc.length > 18
+                            ? InkWell(
+                                onTap: () => _showFullDescription(context, desc),
+                                child: Text.rich(
+                                  TextSpan(
+                                    text: '${desc.substring(0, 16)} ',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.cream.withValues(
+                                        alpha: 0.9,
+                                      ),
+                                    ),
+                                    children: const [
+                                      TextSpan(
+                                        text: 'see more...',
+                                        style: TextStyle(
+                                          color: AppColors.goldLight,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              )
+                            : Text(
+                                desc,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.cream.withValues(
+                                    alpha: 0.9,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+
+                    // 4. Mark
+                    Expanded(
+                      flex: 3,
+                      child: Row(
+                        children: [
+                          Text(
+                            mark,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.gold,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                color: AppColors.muted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               );
             }),
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
-
-

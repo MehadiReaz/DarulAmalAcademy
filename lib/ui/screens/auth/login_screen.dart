@@ -5,8 +5,6 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../widgets/app_button.dart';
-import 'forgot_password_screen.dart';
-import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,10 +18,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  /// The backend supports both `/auth/send-otp` + `/auth/verify-otp` and
-  /// `/auth/login-with-password`. OTP stays the default; password is the
-  /// escape hatch when SMS does not arrive.
-  bool _usePassword = false;
   bool _obscurePassword = true;
 
   @override
@@ -39,28 +33,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final auth = context.read<AuthProvider>();
     final phone = _phoneController.text.trim();
+    final password = _passwordController.text;
 
-    if (_usePassword) {
-      final ok = await auth.loginWithPassword(
-        phone: phone,
-        password: _passwordController.text,
-      );
-      if (!mounted) return;
-      // On success the root gate swaps to the shell on its own, so there
-      // is nothing to navigate to here.
-      if (!ok) _showError(auth.error ?? 'Could not sign you in');
-      return;
-    }
-
-    final ok = await auth.sendOtp(phone);
+    final ok = await auth.loginWithPassword(
+      phone: phone,
+      password: password,
+    );
     if (!mounted) return;
 
-    if (ok) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const OtpScreen()),
-      );
-    } else {
-      _showError(auth.error ?? 'Could not send OTP');
+    if (!ok) {
+      _showError(auth.error ?? 'Could not sign you in. Please check your credentials.');
     }
   }
 
@@ -70,11 +52,26 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _forgotPassword() {
-    final phone = _phoneController.text.trim();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ForgotPasswordScreen(initialPhone: phone),
+  void _showSupportDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Student Assistance',
+          style: TextStyle(color: AppColors.cream, fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          'If you have forgotten your password or need login access, please contact the academy administration or your teacher.',
+          style: TextStyle(color: AppColors.muted, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK', style: TextStyle(color: AppColors.goldLight)),
+          ),
+        ],
       ),
     );
   }
@@ -117,12 +114,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    _usePassword
-                        ? 'Sign in with your mobile number and password'
-                        : 'Sign in with your mobile number to continue',
+                  const Text(
+                    'Sign in with your student phone number and password',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.muted,
                       fontSize: 13,
                     ),
@@ -136,120 +131,72 @@ class _LoginScreenState extends State<LoginScreen> {
                       LengthLimitingTextInputFormatter(20),
                     ],
                     decoration: const InputDecoration(
-                      labelText: 'Mobile Number',
-                      hintText: '1XXX XXXXXX',
-                      prefixIcon: Padding(
-                        padding: EdgeInsets.only(left: 16, right: 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '+91',
-                              style: TextStyle(
-                                color: AppColors.cream,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                            SizedBox(width: 10),
-                            SizedBox(
-                              height: 20,
-                              child: VerticalDivider(
-                                color: AppColors.line,
-                                width: 1,
-                                thickness: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      prefixIconConstraints: BoxConstraints(
-                        minWidth: 0,
-                        minHeight: 0,
-                      ),
+                      labelText: 'Phone Number',
+                      hintText: 'Enter phone number',
+                      prefixIcon: Icon(Icons.phone_outlined),
                     ),
                     validator: (value) {
                       final v = value?.trim() ?? '';
-                      if (v.isEmpty) return 'Enter your mobile number';
-                      if (v.length < 7) return 'That number looks too short';
+                      if (v.isEmpty) return 'Enter your phone number';
+                      if (v.length < 6) return 'That number looks too short';
                       return null;
                     },
                     onFieldSubmitted: (_) => _submit(),
                   ),
-                  if (_usePassword) ...[
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: 20,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 20,
                         ),
-                      ),
-                      validator: (value) {
-                        if (!_usePassword) return null;
-                        final v = value ?? '';
-                        if (v.isEmpty) return 'Enter your password';
-                        if (v.length < 6) return 'That password looks too short';
-                        return null;
-                      },
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: auth.busy ? null : _forgotPassword,
-                        child: const Text(
-                          'Forgot password?',
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12.5,
-                          ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
                         ),
                       ),
                     ),
-                  ],
-                  const SizedBox(height: 22),
+                    validator: (value) {
+                      final v = value ?? '';
+                      if (v.isEmpty) return 'Enter your password';
+                      return null;
+                    },
+                    onFieldSubmitted: (_) => _submit(),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: auth.busy ? null : _showSupportDialog,
+                      child: const Text(
+                        'Need help?',
+                        style: TextStyle(
+                          color: AppColors.goldLight,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   AppButton(
-                    label: _usePassword ? 'Sign In' : 'Send OTP',
+                    label: 'Sign In',
                     loading: auth.busy,
                     onPressed: _submit,
                   ),
-                  const SizedBox(height: 10),
-                  TextButton(
-                    onPressed: auth.busy
-                        ? null
-                        : () {
-                            context.read<AuthProvider>().clearError();
-                            setState(() => _usePassword = !_usePassword);
-                          },
-                    child: Text(
-                      _usePassword
-                          ? 'Sign in with an OTP instead'
-                          : 'Sign in with a password instead',
-                      style: const TextStyle(
-                        color: AppColors.goldLight,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 20),
                   const Text(
                     'Only registered students can log in.\nContact your madrasah if you need access.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: AppColors.muted, fontSize: 12, height: 1.5),
+                      color: AppColors.muted,
+                      fontSize: 12,
+                      height: 1.5,
+                    ),
                   ),
                 ],
               ),

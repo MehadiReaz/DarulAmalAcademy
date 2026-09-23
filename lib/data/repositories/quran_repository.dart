@@ -8,17 +8,25 @@ class QuranRepository {
 
   QuranRepository(this._client);
 
-  /// GET /student/quran-progress
-  ///
-  /// Preferred over the `quran_progress` block on the profile endpoint:
-  /// it paginates the teacher's notes and ships the curriculum reference
-  /// data (114 surahs, focus labels, lesson/para totals) the UI needs to
-  /// render progress against real denominators.
-  Future<QuranProgressBundle> progress({int page = 1}) async {
+  /// GET /api/student/quran-progress
+  /// Returns the student's Quran progress snapshot, history, and reference data.
+  Future<QuranProgressBundle> progress({int page = 1, int perPage = 10}) async {
     final data = await _client.get(
-      ApiEndpoints.quranProgress,
-      query: {'page': page},
+      ApiEndpoints.studentQuranProgress,
+      query: {'page': page, 'per_page': perPage},
     );
     return QuranProgressBundle.fromJson(asMap(data) ?? {});
+  }
+
+  /// GET /api/public/quran
+  /// Returns published Quran surahs and topic groupings.
+  Future<dynamic> publicQuranIndex() async {
+    return await _client.get(ApiEndpoints.publicQuran);
+  }
+
+  /// GET /api/public/quran/surahs/{surah_number}
+  /// Returns one published surah with ayahs, audio sources, tafsir, and navigation.
+  Future<dynamic> publicQuranSurah(int surahNumber) async {
+    return await _client.get(ApiEndpoints.publicQuranSurah(surahNumber));
   }
 }

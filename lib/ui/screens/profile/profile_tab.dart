@@ -6,12 +6,10 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/models/student_user.dart';
 import '../../../providers/attendance_provider.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../providers/chat_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../../providers/dashboard_provider.dart';
 import '../../../providers/fee_provider.dart';
 import '../../../providers/homework_provider.dart';
-import '../../../providers/lesson_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/quran_provider.dart';
@@ -20,15 +18,14 @@ import '../../../providers/shell_provider.dart';
 import '../../../providers/ticket_provider.dart';
 import '../attendance/attendance_screen.dart';
 import '../courses/live_sessions_screen.dart';
+import '../courses/my_courses_screen.dart';
 import '../homework/homework_tab.dart';
-import '../lessons/lessons_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../routine/routine_screen.dart';
 import '../support/support_tab.dart';
 import '../../widgets/app_toast.dart';
-import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileTab extends StatelessWidget {
@@ -68,10 +65,8 @@ class ProfileTab extends StatelessWidget {
     context.read<FeeProvider>().reset();
     context.read<AttendanceProvider>().reset();
     context.read<RecordingProvider>().reset();
-    context.read<ChatProvider>().reset();
     context.read<QuranProvider>().reset();
     context.read<NotificationProvider>().reset();
-    context.read<LessonProvider>().reset();
     context.read<ShellProvider>().reset();
     await context.read<AuthProvider>().logout();
   }
@@ -137,11 +132,11 @@ class ProfileTab extends StatelessWidget {
                 ),
               ),
               _ActionTile(
-                icon: Icons.auto_stories_outlined,
-                title: 'My Lessons',
-                subtitle: 'Lesson plans and study materials',
+                icon: Icons.school_outlined,
+                title: 'My Courses',
+                subtitle: 'Course details, syllabus and materials',
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LessonsScreen()),
+                  MaterialPageRoute(builder: (_) => const MyCoursesScreen()),
                 ),
               ),
               _ActionTile(
@@ -174,16 +169,10 @@ class ProfileTab extends StatelessWidget {
                 icon: Icons.notifications_none_rounded,
                 title: 'Notifications',
                 subtitle: 'Madrasah announcements & alerts',
+                isLast: true,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const NotificationsScreen()),
                 ),
-              ),
-              _ActionTile(
-                icon: Icons.forum_outlined,
-                title: 'Group Chat',
-                subtitle: 'Connect with class peers & teachers',
-                isLast: true,
-                onTap: () => context.read<ShellProvider>().goTo(ShellTab.chat),
               ),
             ],
           ),
@@ -229,17 +218,10 @@ class ProfileTab extends StatelessWidget {
                 ),
               ),
               _ActionTile(
-                icon: Icons.lock_outline_rounded,
-                title: 'Change Password',
-                subtitle: 'Update your account password',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
-                ),
-              ),
-              _ActionTile(
                 icon: Icons.refresh_rounded,
                 title: 'Refresh Profile',
                 subtitle: 'Sync latest info with server',
+                isLast: true,
                 onTap: () async {
                   await context.read<AuthProvider>().reloadProfile();
                   if (context.mounted) {

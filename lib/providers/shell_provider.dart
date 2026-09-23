@@ -9,8 +9,8 @@ class ShellTab {
   ShellTab._();
 
   static const int home = 0;
-  static const int quran = 1;
-  static const int chat = 2;
+  static const int courses = 1;
+  static const int quran = 2;
   static const int profile = 3;
 
   static const int count = 4;

@@ -106,9 +106,8 @@ class NoticeProvider extends BaseProvider {
       },
     );
     if (result != null) {
-      // The detail payload omits `excerpt`, so carry the list copy's one
-      // over — otherwise going back to the list shows an empty preview
-      // for any notice that has been opened.
+      // The detail payload may omit `excerpt` or other fields, so carry the
+      // list copy's ones over.
       Notice? existing;
       for (final n in _notices) {
         if (n.id == id) {
@@ -117,7 +116,17 @@ class NoticeProvider extends BaseProvider {
         }
       }
       _detail = result.copyWith(
-        excerpt: result.excerpt ?? existing?.excerpt,
+        excerpt: (result.excerpt != null && result.excerpt!.isNotEmpty)
+            ? result.excerpt
+            : existing?.excerpt,
+        description:
+            (result.description != null && result.description!.isNotEmpty)
+                ? result.description
+                : existing?.description,
+        attachmentUrl: result.attachmentUrl ?? existing?.attachmentUrl,
+        attachment: result.attachment ?? existing?.attachment,
+        publishAt: result.publishAt ?? existing?.publishAt,
+        publishDate: result.publishDate ?? existing?.publishDate,
         isRead: true,
       );
     }

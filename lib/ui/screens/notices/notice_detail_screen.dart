@@ -31,7 +31,12 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
     final provider = context.watch<NoticeProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notice')),
+      backgroundColor: AppColors.bgDeep,
+      appBar: AppBar(
+        title: const Text('Notice Details'),
+        backgroundColor: AppColors.bgDeep,
+        elevation: 0,
+      ),
       body: _buildBody(provider),
     );
   }
@@ -51,133 +56,220 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
     final notice = provider.detail;
     if (notice == null) return const SizedBox.shrink();
 
+    final hasImage =
+        notice.attachmentUrl != null && notice.attachmentUrl!.trim().isNotEmpty;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 40),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Type + Priority
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3A3520),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  notice.type,
-                  style: const TextStyle(
-                    color: AppColors.goldLight,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+          // 1. Top Image Banner (if available)
+          if (hasImage) ...[
+            Container(
+              height: 200,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.line),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              if (notice.isPinned)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.push_pin_rounded,
-                        size: 12,
+              clipBehavior: Clip.antiAlias,
+              child: Image.network(
+                notice.attachmentUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return Container(
+                    color: AppColors.surface,
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
                         color: AppColors.gold,
                       ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Pinned',
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // 2. Date & Meta Badges Row
+          Row(
+            children: [
+              const Icon(
+                Icons.calendar_today_outlined,
+                size: 14,
+                color: Color(0xFF388BFD),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                notice.formattedDate.isNotEmpty
+                    ? '${notice.formattedDate} 06:00 ds'
+                    : (notice.createdAt != null
+                        ? Fmt.date(notice.createdAt)
+                        : ''),
+                style: const TextStyle(
+                  color: Color(0xFF58A6FF),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (notice.isPinned) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.push_pin_rounded,
+                          size: 11, color: AppColors.gold),
+                      SizedBox(width: 4),
+                      Text(
+                        'PINNED',
                         style: TextStyle(
                           color: AppColors.gold,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
                   ),
                 ),
-              const Spacer(),
-              Text(
-                notice.createdAt != null ? Fmt.date(notice.createdAt) : '',
-                style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
+                const SizedBox(width: 8),
+              ],
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Text(
+                  notice.type,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Title
+          // 3. Notice Title
           Text(
             notice.title,
             style: const TextStyle(
+              color: AppColors.cream,
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              height: 1.3,
+              height: 1.35,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
-          // Description
-          if (notice.description != null && notice.description!.isNotEmpty)
+          // 4. Description Content Card
+          if (notice.displayBody.isNotEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.line),
               ),
               child: Text(
-                notice.description!,
+                notice.displayBody,
                 style: const TextStyle(
                   color: AppColors.cream,
-                  fontSize: 13.5,
+                  fontSize: 14,
                   height: 1.65,
                 ),
               ),
             ),
 
-          const SizedBox(height: 20),
-          const Divider(color: AppColors.line, height: 1),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
-          // Attachments
+          // 5. Attachments Gallery
           if (notice.allAttachments.isNotEmpty) ...[
-            const Text(
-              'Attachments',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppColors.muted,
-              ),
+            const Row(
+              children: [
+                Icon(Icons.attach_file_rounded,
+                    size: 16, color: AppColors.gold),
+                SizedBox(width: 6),
+                Text(
+                  'Attachments',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.cream,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-
-            // ..._buildAttachments(notice),
-            Image.network(
-              notice.allAttachments[0],
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return const Center(
-                  child: CircularProgressIndicator(color: AppColors.gold),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) {
-                return const Center(
-                  child: Icon(Icons.error, color: AppColors.danger),
-                );
-              },
+            const SizedBox(height: 12),
+            ...notice.allAttachments.map(
+              (url) => Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.line),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 140,
+                      color: AppColors.surface,
+                      child: const Center(
+                        child:
+                            CircularProgressIndicator(color: AppColors.gold),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      color: AppColors.surface,
+                      child: const Row(
+                        children: [
+                          Icon(Icons.insert_drive_file_outlined,
+                              color: AppColors.muted),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'View Attachment File',
+                              style: TextStyle(
+                                  color: AppColors.muted, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ],
         ],

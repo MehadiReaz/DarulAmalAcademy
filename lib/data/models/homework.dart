@@ -2,23 +2,23 @@ import '../../core/utils/json_utils.dart';
 import 'student_user.dart';
 
 /// Matches an item in `StudentDashboardController@homeworkList`
-/// (GET /student/homework).
-///
-/// {
-///   "id": 7, "title": "...", "subject": {...}, "teacher": {...},
-///   "description": "...", "assigned_date": "2026-07-01",
-///   "due_date": "2026-07-10", "submission_status": "pending",
-///   "submitted_at": null, "marks": null, "attachment": null,
-///   "is_overdue": false
-/// }
+/// or `assignments` endpoint.
 class Homework {
   final int id;
   final String title;
   final String? description;
+  final NamedRef? course;
+  final NamedRef? batch;
   final NamedRef? subject;
   final NamedRef? teacher;
   final String? assignedDate;
   final String? dueDate;
+
+  /// Raw server status e.g. "Due", "Expired", "Completed".
+  final String status;
+
+  /// "Ongoing Assignment" | "Completed Assignment"
+  final String? assignmentStatus;
 
   /// 'pending' | 'submitted' — as reported by the server.
   final String submissionStatus;
@@ -31,10 +31,14 @@ class Homework {
     required this.id,
     required this.title,
     this.description,
+    this.course,
+    this.batch,
     this.subject,
     this.teacher,
     this.assignedDate,
     this.dueDate,
+    this.status = 'Due',
+    this.assignmentStatus,
     this.submissionStatus = 'pending',
     this.submittedAt,
     this.marks,
@@ -43,9 +47,11 @@ class Homework {
   });
 
   factory Homework.fromJson(Map<String, dynamic> json) {
-    final statusStr = asStringOrNull(json['submission_status']) ??
-        asStringOrNull(json['status']) ??
+    final statusStr = asStringOrNull(json['status']) ??
+        asStringOrNull(json['submission_status']) ??
         asStringOrNull(json['assignment_status']);
+
+    final assignStatus = asStringOrNull(json['assignment_status']);
 
     final submittedDone = asBool(json['submitted_done']);
     final isSubmittedFlag = asBool(json['is_submitted']) ||
@@ -54,7 +60,8 @@ class Homework {
         json['submitted_text'] != null ||
         json['submitted_audio'] != null;
     final hasHistory = (json['submission_history'] is List && (json['submission_history'] as List).isNotEmpty) ||
-        (json['history'] is List && (json['history'] as List).isNotEmpty);
+        (json['history'] is List && (json['history'] as List).isNotEmpty) ||
+        (json['submitted'] is List && (json['submitted'] as List).isNotEmpty);
 
     final totalMarkMap = asMap(json['total_mark']);
     final gainedMark = totalMarkMap != null ? asStringOrNull(totalMarkMap['gained_mark']) : null;
@@ -76,10 +83,30 @@ class Homework {
 
     final remainingDays = asIntOrNull(json['remaining_days']);
 
+    final NamedRef? parsedCourse = json['course'] != null
+        ? NamedRef.fromJson(asMap(json['course']) ?? {})
+        : (json['class'] != null
+            ? NamedRef.fromJson(asMap(json['class']) ?? {})
+            : (json['course_name'] != null
+                ? NamedRef(id: asInt(json['course_id']), name: asString(json['course_name']))
+                : null));
+
+    final NamedRef? parsedBatch = json['batch'] != null
+        ? NamedRef.fromJson(asMap(json['batch']) ?? {})
+        : (json['batch_name'] != null
+            ? NamedRef(id: asInt(json['batch_id']), name: asString(json['batch_name']))
+            : null);
+
+    final resolvedStatus = statusStr != null && statusStr.isNotEmpty
+        ? statusStr
+        : (isSub ? 'Completed' : 'Due');
+
     return Homework(
       id: asInt(json['id']),
       title: asString(json['title'], fallback: 'Homework'),
       description: asStringOrNull(json['description']),
+      course: parsedCourse,
+      batch: parsedBatch,
       subject: json['subject'] == null
           ? null
           : NamedRef.fromJson(asMap(json['subject']) ?? {}),
@@ -90,8 +117,10 @@ class Homework {
           asStringOrNull(json['start_date']) ??
           asStringOrNull(json['issue']),
       dueDate: asStringOrNull(json['due_date']) ??
-          asStringOrNull(json['end_date']) ??
-          asStringOrNull(json['deadline']),
+          asStringOrNull(json['deadline']) ??
+          asStringOrNull(json['end_date']),
+      status: resolvedStatus,
+      assignmentStatus: assignStatus,
       submissionStatus: isSub ? 'submitted' : 'pending',
       submittedAt: asDate(json['submitted_at']),
       marks: markDisplay,
@@ -106,6 +135,38 @@ class Homework {
   bool get isSubmitted => submissionStatus.toLowerCase() == 'submitted';
   bool get isPending => !isSubmitted;
   bool get hasMarks => marks != null && marks!.isNotEmpty;
+
+  String get courseDisplayName {
+    if (course?.name != null && course!.name!.trim().isNotEmpty) {
+      return course!.name!.trim();
+    }
+    if (subject?.name != null && subject!.name!.trim().isNotEmpty) {
+      return subject!.name!.trim();
+    }
+    return 'Nurani';
+  }
+
+  String get batchDisplayName {
+    if (batch?.name != null && batch!.name!.trim().isNotEmpty) {
+      return batch!.name!.trim();
+    }
+    final cName = courseDisplayName;
+    return '$cName - Evening Batch';
+  }
+
+  String get formattedDueDate {
+    if (dueDate == null || dueDate!.trim().isEmpty) return '—';
+    final trimmed = dueDate!.trim();
+    if (RegExp(r'^\d{2}-\d{2}-\d{4}$').hasMatch(trimmed)) return trimmed;
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed != null) {
+      final d = parsed.day.toString().padLeft(2, '0');
+      final m = parsed.month.toString().padLeft(2, '0');
+      final y = parsed.year.toString();
+      return '$d-$m-$y';
+    }
+    return trimmed;
+  }
 
   DateTime? get dueAt => asDate(dueDate);
 
@@ -131,29 +192,79 @@ class Homework {
     return 'Due in $days days';
   }
 
-  /// A homework is only truly overdue if it is still unsubmitted. The
-  /// backend already applies that rule, but recompute defensively so a
-  /// stale `is_overdue` can't mislabel a submitted item.
+  /// A homework is only truly overdue if it is still unsubmitted.
   bool get showAsOverdue => isPending && (isOverdue || (daysRemaining ?? 0) < 0);
 }
 
-/// A single past submission, from `submission_history` in
-/// `StudentDashboardController@homeworkDetails`.
+/// A single past submission item, e.g. from `submitted` list or
+/// `submission_history` in `StudentDashboardController@homeworkDetails`.
 class HomeworkSubmission {
-  final DateTime? submittedAt;
+  final int? id;
+  final String? studentName;
+  final String? studentRoll;
+  final String? studentPhoto;
+  final String? fileUrl;
   final String? text;
-  final String? audioUrl;
+  final String? mark;
+  final String? status;
+  final DateTime? submittedAt;
 
-  const HomeworkSubmission({this.submittedAt, this.text, this.audioUrl});
+  const HomeworkSubmission({
+    this.id,
+    this.studentName,
+    this.studentRoll,
+    this.studentPhoto,
+    this.fileUrl,
+    this.text,
+    this.mark,
+    this.status,
+    this.submittedAt,
+  });
 
-  factory HomeworkSubmission.fromJson(Map<String, dynamic> json) =>
-      HomeworkSubmission(
-        submittedAt: asDate(json['submitted_at']) ?? asDate(json['created_at']),
-        text: asStringOrNull(json['submitted_text']) ?? asStringOrNull(json['description']),
-        audioUrl: asStringOrNull(json['assignment_url']) ??
-            asStringOrNull(json['submitted_audio']) ??
-            asStringOrNull(json['assignment']),
-      );
+  /// Backward-compatible alias for existing audio/file consumers.
+  String? get audioUrl => fileUrl;
+
+  factory HomeworkSubmission.fromJson(Map<String, dynamic> json) {
+    final userMap = asMap(json['student']) ?? asMap(json['user']);
+    final file = asStringOrNull(json['assignment_url']) ??
+        asStringOrNull(json['assignment']) ??
+        asStringOrNull(json['file_url']) ??
+        asStringOrNull(json['file']) ??
+        asStringOrNull(json['submitted_audio']);
+
+    final markVal = asStringOrNull(json['gained_mark']) ??
+        asStringOrNull(json['mark']) ??
+        asStringOrNull(json['marks']);
+
+    final isCompleted = json['completed'] == '1' ||
+        json['completed'] == 1 ||
+        json['completed'] == true ||
+        asStringOrNull(json['status'])?.toLowerCase() == 'completed';
+
+    return HomeworkSubmission(
+      id: asIntOrNull(json['id']),
+      studentName: userMap != null
+          ? asStringOrNull(userMap['name'])
+          : asStringOrNull(json['student_name']),
+      studentRoll: userMap != null
+          ? (asStringOrNull(userMap['roll_no']) ??
+              asStringOrNull(userMap['roll']) ??
+              asStringOrNull(userMap['student_id']))
+          : (asStringOrNull(json['roll_no']) ??
+              asStringOrNull(json['roll']) ??
+              asStringOrNull(json['student_id'])),
+      studentPhoto: userMap != null
+          ? asStringOrNull(userMap['profile_photo_url'])
+          : asStringOrNull(json['profile_photo_url']),
+      fileUrl: file,
+      text: asStringOrNull(json['description']) ??
+          asStringOrNull(json['submitted_text']) ??
+          asStringOrNull(json['text']),
+      mark: markVal,
+      status: isCompleted ? 'Completed' : (asStringOrNull(json['status']) ?? 'Submitted'),
+      submittedAt: asDate(json['submitted_at']) ?? asDate(json['created_at']),
+    );
+  }
 }
 
 /// Matches `StudentDashboardController@homeworkDetails`
@@ -163,10 +274,14 @@ class HomeworkDetail {
   final String title;
   final String? description;
   final String? instructions;
+  final NamedRef? course;
+  final NamedRef? batch;
   final NamedRef? subject;
   final NamedRef? teacher;
   final String? assignedDate;
   final String? dueDate;
+  final String status;
+  final String? assignmentStatus;
   final String submissionStatus;
   final String? submittedText;
   final String? submittedAudio;
@@ -174,16 +289,21 @@ class HomeworkDetail {
   final String? teacherRemarks;
   final List<String> attachments;
   final List<HomeworkSubmission> history;
+  final List<HomeworkSubmission> submissions;
 
   const HomeworkDetail({
     required this.id,
     required this.title,
     this.description,
     this.instructions,
+    this.course,
+    this.batch,
     this.subject,
     this.teacher,
     this.assignedDate,
     this.dueDate,
+    this.status = 'Due',
+    this.assignmentStatus,
     this.submissionStatus = 'pending',
     this.submittedText,
     this.submittedAudio,
@@ -191,12 +311,15 @@ class HomeworkDetail {
     this.teacherRemarks,
     this.attachments = const [],
     this.history = const [],
+    this.submissions = const [],
   });
 
   factory HomeworkDetail.fromJson(Map<String, dynamic> json) {
-    final statusStr = asStringOrNull(json['submission_status']) ??
-        asStringOrNull(json['status']) ??
+    final statusStr = asStringOrNull(json['status']) ??
+        asStringOrNull(json['submission_status']) ??
         asStringOrNull(json['assignment_status']);
+
+    final assignStatus = asStringOrNull(json['assignment_status']);
 
     dynamic rawHistory = json['submission_history'] ??
         json['history'] ??
@@ -204,8 +327,14 @@ class HomeworkDetail {
         json['submissions_list'];
     final historyList = asList(rawHistory, HomeworkSubmission.fromJson);
 
+    dynamic rawSubmitted = json['submitted'] ??
+        (asMap(json['submissions_list'])?['data']) ??
+        json['submissions_list'] ??
+        rawHistory;
+    final submittedList = asList(rawSubmitted, HomeworkSubmission.fromJson);
+
     final submittedDone = asBool(json['submitted_done']);
-    final submissions = asDouble(json['submissions']);
+    final submissionsCount = asDouble(json['submissions']);
     final subAudio = asStringOrNull(json['submitted_audio']) ??
         asStringOrNull(json['assignment_url']) ??
         (historyList.isNotEmpty ? historyList.first.audioUrl : null);
@@ -215,20 +344,41 @@ class HomeworkDetail {
 
     final isSub = submittedDone ||
         isSubmittedFlag ||
-        submissions > 0 ||
+        submissionsCount > 0 ||
         hasSubmittedContent ||
         historyList.isNotEmpty ||
+        submittedList.isNotEmpty ||
         statusStr?.toLowerCase() == 'submitted' ||
         statusStr?.toLowerCase() == 'completed' ||
         statusStr?.toLowerCase() == 'submitted assignment';
 
     final markVal = json['marks'] ?? json['mark'] ?? json['total_mark'];
 
+    final NamedRef? parsedCourse = json['course'] != null
+        ? NamedRef.fromJson(asMap(json['course']) ?? {})
+        : (json['class'] != null
+            ? NamedRef.fromJson(asMap(json['class']) ?? {})
+            : (json['course_name'] != null
+                ? NamedRef(id: asInt(json['course_id']), name: asString(json['course_name']))
+                : null));
+
+    final NamedRef? parsedBatch = json['batch'] != null
+        ? NamedRef.fromJson(asMap(json['batch']) ?? {})
+        : (json['batch_name'] != null
+            ? NamedRef(id: asInt(json['batch_id']), name: asString(json['batch_name']))
+            : null);
+
+    final resolvedStatus = statusStr != null && statusStr.isNotEmpty
+        ? statusStr
+        : (isSub ? 'Completed' : 'Due');
+
     return HomeworkDetail(
       id: asInt(json['id']),
       title: asString(json['title'], fallback: 'Homework'),
       description: asStringOrNull(json['description']),
       instructions: asStringOrNull(json['instructions']),
+      course: parsedCourse,
+      batch: parsedBatch,
       subject: json['subject'] == null
           ? null
           : NamedRef.fromJson(asMap(json['subject']) ?? {}),
@@ -239,8 +389,10 @@ class HomeworkDetail {
           asStringOrNull(json['start_date']) ??
           asStringOrNull(json['issue']),
       dueDate: asStringOrNull(json['due_date']) ??
-          asStringOrNull(json['end_date']) ??
-          asStringOrNull(json['deadline']),
+          asStringOrNull(json['deadline']) ??
+          asStringOrNull(json['end_date']),
+      status: resolvedStatus,
+      assignmentStatus: assignStatus,
       submissionStatus: isSub ? 'submitted' : 'pending',
       submittedText: asStringOrNull(json['submitted_text']) ??
           (historyList.isNotEmpty ? historyList.first.text : null),
@@ -249,6 +401,7 @@ class HomeworkDetail {
       teacherRemarks: asStringOrNull(json['teacher_remarks']),
       attachments: _parseAttachments(json['attachments']),
       history: historyList,
+      submissions: submittedList.isNotEmpty ? submittedList : historyList,
     );
   }
 
@@ -256,15 +409,42 @@ class HomeworkDetail {
   bool get isPending => !isSubmitted;
   bool get hasMarks => marks != null && marks!.isNotEmpty;
 
-  /// The body text to show. `instructions` is currently just a copy of
-  /// `description` on the backend, so prefer description and only fall
-  /// back to instructions if description is missing.
+  String get courseDisplayName {
+    if (course?.name != null && course!.name!.trim().isNotEmpty) {
+      return course!.name!.trim();
+    }
+    if (subject?.name != null && subject!.name!.trim().isNotEmpty) {
+      return subject!.name!.trim();
+    }
+    return 'Nurani';
+  }
+
+  String get batchDisplayName {
+    if (batch?.name != null && batch!.name!.trim().isNotEmpty) {
+      return batch!.name!.trim();
+    }
+    final cName = courseDisplayName;
+    return '$cName - Evening Batch';
+  }
+
+  String get formattedDueDate {
+    if (dueDate == null || dueDate!.trim().isEmpty) return '—';
+    final trimmed = dueDate!.trim();
+    if (RegExp(r'^\d{2}-\d{2}-\d{4}$').hasMatch(trimmed)) return trimmed;
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed != null) {
+      final d = parsed.day.toString().padLeft(2, '0');
+      final m = parsed.month.toString().padLeft(2, '0');
+      final y = parsed.year.toString();
+      return '$d-$m-$y';
+    }
+    return trimmed;
+  }
+
+  /// Prefer description and fall back to instructions.
   String? get body =>
       (description != null && description!.isNotEmpty) ? description : instructions;
 
-  /// The detail endpoint returns `attachments` as a **map**
-  /// (`{"assignment_url": "..."}`) rather than the list the list-endpoint
-  /// implies, and as `null` when nothing was submitted. Handle all three.
   static List<String> _parseAttachments(dynamic raw) {
     if (raw is List) {
       return raw

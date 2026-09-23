@@ -8,9 +8,9 @@ class DashboardRepository {
 
   DashboardRepository(this._client);
 
-  /// GET /student/dashboard  →  full dashboard payload.
+  /// GET /api/student/dashboard  →  full dashboard payload.
   Future<DashboardData> fetch() async {
-    final data = await _client.get(ApiEndpoints.dashboard);
+    final data = await _client.get(ApiEndpoints.studentDashboard);
     return DashboardData.fromJson(asMap(data) ?? {});
   }
 }
