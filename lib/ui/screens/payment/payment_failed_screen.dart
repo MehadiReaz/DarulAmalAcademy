@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fee.dart';
-import '../support/create_ticket_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Screen displayed when payment fails or is cancelled.
 class PaymentFailedScreen extends StatelessWidget {
@@ -37,7 +37,7 @@ class PaymentFailedScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SafeArea(
+      body: ResponsiveBody(child: SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -189,57 +189,29 @@ class PaymentFailedScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CreateTicketScreen(
-                                  initialCategory: 'payment_issue',
-                                  initialSubject:
-                                      'Payment issue for $title ($amountText)',
-                                ),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: AppColors.line),
-                            foregroundColor: AppColors.cream,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text('Contact Support'),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(false);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.line),
+                        foregroundColor: AppColors.muted,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.of(context).pop(false);
-                          },
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: AppColors.line),
-                            foregroundColor: AppColors.muted,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text('Back to Dues'),
-                        ),
-                      ),
-                    ],
+                      child: const Text('Back to Dues'),
+                    ),
                   ),
                 ],
               ),
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 

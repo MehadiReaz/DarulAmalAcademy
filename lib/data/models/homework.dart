@@ -64,7 +64,11 @@ class Homework {
         (json['submitted'] is List && (json['submitted'] as List).isNotEmpty);
 
     final totalMarkMap = asMap(json['total_mark']);
-    final gainedMark = totalMarkMap != null ? asStringOrNull(totalMarkMap['gained_mark']) : null;
+    // Course-tab lists carry the student's own submission inline.
+    final submission = asMap(json['submission']);
+    final gainedMark = asStringOrNull(
+      totalMarkMap?['gained_mark'] ?? submission?['gained_mark'],
+    );
     final maxMark = asStringOrNull(json['mark']) ?? asStringOrNull(json['marks']);
 
     final isSub = submittedDone ||
@@ -72,6 +76,7 @@ class Homework {
         hasSubmittedContent ||
         hasHistory ||
         totalMarkMap != null ||
+        submission != null ||
         statusStr?.toLowerCase() == 'submitted' ||
         statusStr?.toLowerCase() == 'completed' ||
         statusStr?.toLowerCase() == 'completed assignment' ||
@@ -122,7 +127,8 @@ class Homework {
       status: resolvedStatus,
       assignmentStatus: assignStatus,
       submissionStatus: isSub ? 'submitted' : 'pending',
-      submittedAt: asDate(json['submitted_at']),
+      submittedAt:
+          asDate(json['submitted_at']) ?? asDate(submission?['created_at']),
       marks: markDisplay,
       attachment: asStringOrNull(json['attachment']),
       isOverdue: asBool(json['is_overdue']) ||

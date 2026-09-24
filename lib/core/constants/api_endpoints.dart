@@ -152,17 +152,6 @@ class ApiEndpoints {
   /// GET: Returns Admin Support and Help Center WhatsApp contacts.
   static const String studentSupportContacts = '/api/student/support';
 
-  /// GET: Lists student's support tickets.
-  /// POST: Creates a new support ticket (multipart/form-data).
-  static const String studentTickets = '/api/student/tickets';
-
-  /// GET: Returns support ticket details with replies.
-  static String studentTicketDetail(int id) => '/api/student/tickets/$id';
-
-  /// POST: Adds a reply to an owned open ticket (multipart/form-data).
-  static String studentTicketReply(int id) =>
-      '/api/student/tickets/$id/reply';
-
   // ==========================================
   // 12. Public Frontend / Guest APIs
   // ==========================================

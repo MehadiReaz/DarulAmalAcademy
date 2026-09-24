@@ -5,12 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/json_utils.dart';
+import '../../../data/models/attendance.dart';
+import '../../../data/models/enrolled_course.dart';
 import '../../../data/models/homework.dart';
 import '../../../data/models/live_session.dart';
 import '../../../data/models/recording.dart';
 import '../../../providers/class_provider.dart';
-import '../../../providers/homework_provider.dart';
-import '../../../providers/recording_provider.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
 import '../homework/homework_detail_screen.dart';
@@ -18,6 +18,7 @@ import '../homework/widgets/homework_card.dart';
 import '../recordings/drive_player_screen.dart';
 import '../recordings/widgets/recording_card.dart';
 import '../recordings/youtube_player_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   final int batchId;
@@ -99,20 +100,6 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       _tabError[tabKey] = null;
     });
 
-    if (tabKey == 'online-class') {
-      try {
-        context.read<ClassProvider>().loadLiveSessions(force: force);
-      } catch (_) {}
-    } else if (tabKey == 'assignments') {
-      try {
-        Provider.of<HomeworkProvider>(context, listen: false).load(force: force);
-      } catch (_) {}
-    } else if (tabKey == 'recordings') {
-      try {
-        Provider.of<RecordingProvider>(context, listen: false).load(force: force);
-      } catch (_) {}
-    }
-
     try {
       final res = await context.read<ClassProvider>().loadCourseTab(
         widget.batchId,
@@ -124,9 +111,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
           _tabData[tabKey] = res;
           _tabLoading[tabKey] = false;
 
-          if (tabKey == 'details') {
-            _extractDetails(res);
-          }
+          _extractDetails(res);
         });
       }
     } catch (e) {
@@ -139,21 +124,25 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
     }
   }
 
+  /// Pulls the header info out of any tab response: every tab repeats
+  /// `course` and `selected_batch`.
   void _extractDetails(dynamic data) {
     final map = asMap(data) ?? {};
-    final batch = asMap(map['batch']) ?? asMap(map['course']) ?? map;
-    final name = asStringOrNull(batch['name'] ?? batch['batch_name']);
-    if (name != null && name.isNotEmpty) _batchName = name;
+    final batchMap = asMap(map['selected_batch']) ?? asMap(map['batch']);
+    if (batchMap != null) {
+      final batch = CourseBatch.fromJson(batchMap);
+      if (batch.name?.isNotEmpty ?? false) _batchName = batch.name;
+      if (batch.schedule != null) _schedule = batch.schedule;
+      final teacher = batch.teacher?.name;
+      if (teacher?.isNotEmpty ?? false) _teacherName = teacher;
+    }
 
-    final sched = asStringOrNull(batch['schedule'] ?? batch['routine']);
-    if (sched != null && sched.isNotEmpty) _schedule = sched;
-
-    final teacher = asMap(batch['teacher']);
-    final tName = asStringOrNull(teacher?['name'] ?? batch['teacher_name']);
-    if (tName != null && tName.isNotEmpty) _teacherName = tName;
-
-    final dur = asStringOrNull(batch['duration'] ?? batch['course_duration']);
-    if (dur != null && dur.isNotEmpty) _duration = dur;
+    final course = asMap(map['course']);
+    final duration = asStringOrNull(course?['duration']);
+    if (duration != null && duration.isNotEmpty) {
+      final unit = asStringOrNull(course?['duration_type']) ?? '';
+      _duration = '$duration $unit'.trim();
+    }
   }
 
   void _playRecording(Recording r) {
@@ -192,8 +181,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final displayBatchName = _batchName ?? '${widget.courseTitle} - Evening Batch';
-    final displaySchedule = _schedule ?? 'Saturday, Monday, Wednesday · 06:00 PM - 07:30 PM';
+    final displayBatchName = _batchName ?? widget.courseTitle;
+    final displaySchedule = _schedule ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
@@ -202,7 +191,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
         backgroundColor: const Color(0xFF07261F),
         elevation: 0,
       ),
-      body: Column(
+      body: ResponsiveBody(child: Column(
         children: [
           // 1. Header Banner matching reference design
           _buildHeaderBanner(displayBatchName, displaySchedule),
@@ -221,7 +210,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 
@@ -296,7 +285,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
 
                 // Batch & Schedule Subtitle
                 Text(
-                  '$batchName · $schedule',
+                  schedule.isEmpty ? batchName : '$batchName · $schedule',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w500,
@@ -376,48 +365,6 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
     }
 
     if (error != null && data == null) {
-      if (key == 'online-class') {
-        try {
-          final cp = Provider.of<ClassProvider>(context, listen: false);
-          if (cp.liveSessions?.allSessions.isNotEmpty == true) {
-            return RefreshIndicator(
-              color: AppColors.gold,
-              backgroundColor: AppColors.surface,
-              onRefresh: () => _loadTab(key, force: true),
-              child: _buildLiveClassesList(null),
-            );
-          }
-        } catch (_) {}
-      }
-
-      if (key == 'assignments') {
-        try {
-          final hp = Provider.of<HomeworkProvider>(context, listen: false);
-          if (hp.items.isNotEmpty) {
-            return RefreshIndicator(
-              color: AppColors.gold,
-              backgroundColor: AppColors.surface,
-              onRefresh: () => _loadTab(key, force: true),
-              child: _buildAssignmentsList(null),
-            );
-          }
-        } catch (_) {}
-      }
-
-      if (key == 'recordings') {
-        try {
-          final rp = Provider.of<RecordingProvider>(context, listen: false);
-          if (rp.items.isNotEmpty) {
-            return RefreshIndicator(
-              color: AppColors.gold,
-              backgroundColor: AppColors.surface,
-              onRefresh: () => _loadTab(key, force: true),
-              child: _buildRecordingsList(null),
-            );
-          }
-        } catch (_) {}
-      }
-
       return ErrorView(
         message: error,
         onRetry: () => _loadTab(key, force: true),
@@ -459,19 +406,18 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
   // ===========================================================================
   Widget _buildOverview(dynamic data) {
     final map = asMap(data) ?? {};
-    final batch = asMap(map['batch']) ?? asMap(map['course']) ?? map;
     final summary = asMap(map['summary']) ?? {};
 
-    final batchName = _batchName ?? asString(batch['name'], fallback: '${widget.courseTitle} - Evening Batch');
-    final schedule = _schedule ?? asString(batch['schedule'], fallback: 'Saturday, Monday, Wednesday · 06:00 PM - 07:30 PM');
-    final teacher = _teacherName ?? asString(asMap(batch['teacher'])?['name'] ?? batch['teacher_name'], fallback: 'Qari Mahmood Al-Hussary');
-    final duration = _duration ?? asString(batch['duration'], fallback: '6 months');
+    final batchName = _batchName ?? '—';
+    final schedule = _schedule ?? '—';
+    final teacher = _teacherName ?? '—';
+    final duration = _duration ?? '—';
 
-    final pendingHomework = asString(summary['pending_homework'] ?? summary['due_assignments'] ?? summary['assignments_count'], fallback: '0');
-    final upcomingClasses = asString(summary['upcoming_classes'] ?? summary['classes_count'], fallback: '2');
-    final recordingsCount = asString(summary['recordings'] ?? summary['recordings_count'], fallback: '2');
-    final attendanceRate = asString(summary['attendance_percentage'] ?? summary['attendance_rate'], fallback: '0%');
-    final sessionsCount = asString(summary['total_sessions'] ?? summary['sessions_recorded'], fallback: '0');
+    final pendingHomework = asInt(summary['pending_homework']).toString();
+    final upcomingClasses = asInt(summary['upcoming_classes']).toString();
+    final recordingsCount = asInt(summary['recordings']).toString();
+    final attendanceRate = '${asDouble(summary['attendance_rate']).round()}%';
+    final sessionsCount = asInt(summary['attendance_total']).toString();
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -713,12 +659,16 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
             const SizedBox(height: 10),
             Row(
               children: [
-                Text(
-                  'View Details',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: iconColor,
+                Flexible(
+                  child: Text(
+                    'View Details',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: iconColor,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -746,22 +696,6 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       }
     }
 
-    // Fallback to HomeworkProvider if tab list is empty
-    if (homeworkList.isEmpty) {
-      try {
-        final hwProvider = Provider.of<HomeworkProvider>(context, listen: false);
-        final hwItems = hwProvider.items;
-        if (hwItems.isNotEmpty) {
-          final targetCourse = widget.courseTitle.toLowerCase().trim();
-          final matching = hwItems.where((h) {
-            final cName = h.courseDisplayName.toLowerCase().trim();
-            return cName.contains(targetCourse) || targetCourse.contains(cName);
-          }).toList();
-          homeworkList.addAll(matching.isNotEmpty ? matching : hwItems);
-        }
-      } catch (_) {}
-    }
-
     if (homeworkList.isEmpty) {
       return const EmptyView(
         icon: Icons.assignment_outlined,
@@ -786,10 +720,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       return h.isSubmitted || isCompletedStatus || isCompletedAssign;
     }).toList();
 
-    final displayBatchName = _batchName ??
-        (homeworkList.isNotEmpty
-            ? homeworkList.first.batchDisplayName
-            : '${widget.courseTitle} - Evening Batch');
+    final displayBatchName = _batchName ?? homeworkList.first.batchDisplayName;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -887,23 +818,11 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
   // TAB 3: Live Classes
   // ===========================================================================
   Widget _buildLiveClassesList(dynamic data) {
-    var list = _extractList(data, 'classes');
-
-    // Fallback to ClassProvider.liveSessions if tab list is empty
-    if (list.isEmpty) {
-      try {
-        final classProvider = Provider.of<ClassProvider>(context, listen: false);
-        final allSessions = classProvider.liveSessions?.allSessions ?? [];
-        if (allSessions.isNotEmpty) {
-          final targetCourse = widget.courseTitle.toLowerCase().trim();
-          final matching = allSessions.where((s) {
-            final cName = s.course?.name?.toLowerCase().trim() ?? s.subjectName.toLowerCase().trim();
-            return cName.contains(targetCourse) || targetCourse.contains(cName);
-          }).toList();
-          list = matching.isNotEmpty ? matching : allSessions;
-        }
-      } catch (_) {}
-    }
+    final list = _extractList(data, 'classes')
+        .map((e) => e is LiveSession
+            ? e
+            : LiveSession.fromJson(asMap(e) ?? const {}))
+        .toList();
 
     if (list.isEmpty) {
       return const EmptyView(
@@ -913,7 +832,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       );
     }
 
-    final displayBatchName = _batchName ?? '${widget.courseTitle} - Evening Batch';
+    final displayBatchName = _batchName ?? widget.courseTitle;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -953,44 +872,19 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
     );
   }
 
-  Widget _buildLiveClassCard(dynamic item) {
-    String topic;
-    String course;
-    String batch;
-    String teacher;
-    String startTime;
-    String password;
-    String description;
-    String? joinUrl;
-    bool isLive;
-    String status;
-
-    if (item is LiveSession) {
-      topic = item.topic;
-      course = item.course?.name ?? widget.courseTitle;
-      batch = _batchName ?? '${widget.courseTitle} - Evening Batch';
-      teacher = item.teacherName;
-      startTime = item.displayDate;
-      password = item.password ?? 'password';
-      description = item.description ?? '';
-      joinUrl = item.joinUrl;
-      isLive = item.isLive;
-      status = item.onlineClassStatus ?? item.status ?? (isLive ? 'Live' : 'Upcoming');
-    } else {
-      final map = asMap(item) ?? {};
-      topic = asString(map['topic'] ?? map['title'], fallback: 'Live Class');
-      course = asString(asMap(map['course'])?['name'] ?? map['course_name'], fallback: widget.courseTitle);
-      batch = asString(asMap(map['batch'])?['name'] ?? map['batch_name'], fallback: _batchName ?? '${widget.courseTitle} - Evening Batch');
-      teacher = asString(asMap(map['teacher'])?['name'] ?? map['teacher_name'], fallback: _teacherName ?? 'Qari Mahmood Al-Hussary');
-      startTime = asString(map['start_date_format'] ?? map['start_time'] ?? map['date_time'] ?? map['datetime'], fallback: '24/09/2026, 06:00:00');
-      password = asString(map['password'], fallback: 'password');
-      description = asString(map['description'], fallback: '');
-      joinUrl = asStringOrNull(map['join_url'] ?? map['meeting_url'] ?? map['link']);
-      final statusRaw = asString(map['online_class_status'] ?? map['status'], fallback: 'Upcoming');
-      final lower = statusRaw.toLowerCase();
-      isLive = lower == 'live' || lower == 'ongoing' || lower.contains('live');
-      status = isLive ? 'Live' : statusRaw;
-    }
+  Widget _buildLiveClassCard(LiveSession item) {
+    final topic = item.topic;
+    final course = item.course?.name ?? widget.courseTitle;
+    final batch = item.batch?.name ?? _batchName ?? widget.courseTitle;
+    final teacher = item.teacher?.name ?? _teacherName ?? '—';
+    final startTime = item.displayDate;
+    final password = item.password;
+    final description = item.description ?? '';
+    final joinUrl = item.joinUrl;
+    final isLive = item.isLive;
+    final status = isLive
+        ? 'Live'
+        : (item.onlineClassStatus ?? item.status ?? 'Upcoming');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1091,8 +985,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
                   label: 'Start Time',
                   value: startTime,
                 ),
-                const SizedBox(height: 9),
-                _buildLivePasswordRow(password),
+                if (password != null && password.isNotEmpty) ...[
+                  const SizedBox(height: 9),
+                  _buildLivePasswordRow(password),
+                ],
 
                 if (description.isNotEmpty) ...[
                   const SizedBox(height: 9),
@@ -1121,7 +1017,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
                         ),
                         elevation: 0,
                       ),
-                      onPressed: () => _launchExternalUrl(joinUrl!),
+                      onPressed: () => _launchExternalUrl(joinUrl),
                       icon: const Icon(Icons.videocam_rounded, size: 20),
                       label: const Text(
                         'Join Live Class',
@@ -1220,25 +1116,6 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       }
     }
 
-    // Fallback to RecordingProvider if tab list is empty
-    if (recordingList.isEmpty) {
-      try {
-        final recProvider = Provider.of<RecordingProvider>(context, listen: false);
-        final recItems = recProvider.items;
-        if (recItems.isNotEmpty) {
-          final targetCourse = widget.courseTitle.toLowerCase().trim();
-          final matching = recItems.where((r) {
-            final cName = r.course?.name?.toLowerCase().trim() ?? '';
-            final bName = r.batch?.name?.toLowerCase().trim() ?? '';
-            return cName.contains(targetCourse) ||
-                targetCourse.contains(cName) ||
-                (_batchName != null && bName.contains(_batchName!.toLowerCase().trim()));
-          }).toList();
-          recordingList.addAll(matching.isNotEmpty ? matching : recItems);
-        }
-      } catch (_) {}
-    }
-
     if (recordingList.isEmpty) {
       return const EmptyView(
         icon: Icons.play_circle_outline_rounded,
@@ -1247,10 +1124,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       );
     }
 
-    final displayBatchName = _batchName ??
-        (recordingList.isNotEmpty && recordingList.first.batch?.name != null
-            ? recordingList.first.batch!.name!
-            : '${widget.courseTitle} - Evening Batch');
+    final displayBatchName =
+        _batchName ?? recordingList.first.batch?.name ?? widget.courseTitle;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -1301,42 +1176,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
   Widget _buildSyllabusList(dynamic data) {
     final list = _extractList(data, 'syllabus');
     if (list.isEmpty) {
-      // Default canonical syllabus items matching the web portal screenshot
-      final defaultSyllabus = [
-        {
-          'number': '1',
-          'title': 'Course orientation',
-          'subtitle': 'Introduction, learning outcomes, and study method for ${widget.courseTitle}.',
-        },
-        {
-          'number': '2',
-          'title': 'Core lessons',
-          'subtitle': 'Guided study of the essential topics and texts in ${widget.courseTitle}.',
-        },
-        {
-          'number': '3',
-          'title': 'Practice and revision',
-          'subtitle': 'Regular practice, recitation, revision, and teacher feedback.',
-        },
-        {
-          'number': '4',
-          'title': 'Assessment and completion',
-          'subtitle': 'Progress review and final assessment before course completion.',
-        },
-      ];
-
-      return ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        itemCount: defaultSyllabus.length,
-        itemBuilder: (ctx, i) {
-          final item = defaultSyllabus[i];
-          return _buildSyllabusItem(
-            number: item['number']!,
-            title: item['title']!,
-            subtitle: item['subtitle']!,
-          );
-        },
+      return const EmptyView(
+        icon: Icons.menu_book_outlined,
+        title: 'No syllabus yet',
+        subtitle: 'The syllabus for this course will appear here once added.',
       );
     }
 
@@ -1347,7 +1190,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       itemBuilder: (ctx, i) {
         final item = asMap(list[i]) ?? {};
         final title = asString(item['title'] ?? item['name'], fallback: 'Lesson ${i + 1}');
-        final subtitle = asString(item['subtitle'] ?? item['description'], fallback: 'Key concepts and study materials covered in this lesson.');
+        final subtitle = asString(item['subtitle'] ?? item['description']);
 
         return _buildSyllabusItem(
           number: '${i + 1}',
@@ -1428,21 +1271,13 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
   // TAB 6: Attendance
   // ===========================================================================
   Widget _buildAttendanceList(dynamic data) {
-    final list = _extractList(data, 'attendance');
+    final list = _extractList(data, 'attendance')
+        .map((e) => AttendanceRecord.fromJson(asMap(e) ?? const {}))
+        .toList();
 
-    // Stats
-    int present = 0;
-    int absent = 0;
-    for (final item in list) {
-      final map = asMap(item) ?? {};
-      final status = asString(map['status'], fallback: '').toLowerCase();
-      if (status == 'present' || status == 'উপস্থিত') {
-        present++;
-      } else if (status.isNotEmpty) {
-        absent++;
-      }
-    }
-
+    // Same rule as the Attendance screen: late is not counted as present.
+    final present = list.where((r) => r.isPresent).length;
+    final absent = list.length - present;
     final total = list.length;
     final rate = total > 0 ? '${((present / total) * 100).toStringAsFixed(0)}%' : '0%';
 
@@ -1495,11 +1330,12 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
             ),
           )
         else
-          ...list.map((item) {
-            final map = asMap(item) ?? {};
-            final date = asString(map['date'] ?? map['date_time'], fallback: 'Class');
-            final status = asString(map['status'], fallback: 'Present');
-            final isPresent = status.toLowerCase() == 'present' || status == 'উপস্থিত';
+          ...list.map((r) {
+            final date = r.dateLabel ?? r.rawDate ?? '—';
+            final isPresent = r.isPresent;
+            final badgeColor = isPresent
+                ? const Color(0xFF10B981)
+                : (r.isLate ? AppColors.gold : const Color(0xFFEF4444));
 
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
@@ -1526,17 +1362,15 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isPresent
-                          ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                          : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                      color: badgeColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      isPresent ? 'Present' : 'Absent',
+                      r.statusLabel,
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: isPresent ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        color: badgeColor,
                       ),
                     ),
                   ),
@@ -1600,6 +1434,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
           'recorded_classes',
         ],
         'syllabus': [
+          'syllabuses',
           'syllabus',
           'lessons',
           'chapters',

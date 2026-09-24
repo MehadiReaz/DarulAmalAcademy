@@ -1,3 +1,4 @@
+import '../../core/utils/formatters.dart';
 import '../../core/utils/json_utils.dart';
 import 'student_user.dart';
 
@@ -152,34 +153,83 @@ class QuickStats {
 
 /// A class entry from the dashboard's `today_classes` array.
 ///
-/// Times arrive pre-formatted ("9:00 AM"), unlike `/student/classes/today`
-/// which sends raw "21:00:00" — so these are displayed as-is.
+/// `start_time`/`end_time` arrive as ISO strings such as
+/// `2026-09-24T11:30:00+00:00`, but the clock time is the madrasah's
+/// schedule (batch 11:30 AM – 1:00 PM) mislabelled as UTC. So the time is
+/// shown exactly as written and never converted to the device timezone.
 class DashboardClass {
-  final int id;
+  final String id;
   final String title;
-  final String startTime;
-  final String endTime;
+  final String rawStart;
+  final String rawEnd;
   final String status; // 'upcoming', 'ongoing', 'completed'
 
   const DashboardClass({
     required this.id,
     required this.title,
-    required this.startTime,
-    required this.endTime,
+    required this.rawStart,
+    required this.rawEnd,
     required this.status,
   });
 
-  factory DashboardClass.fromJson(Map<String, dynamic> json) => DashboardClass(
-        id: asInt(json['id']),
-        title: asString(json['title'], fallback: 'Class'),
-        startTime: asString(json['start_time']),
-        endTime: asString(json['end_time']),
-        status: asString(json['status'], fallback: 'upcoming'),
-      );
+  factory DashboardClass.fromJson(Map<String, dynamic> json) {
+    final String status;
+    if (asBool(json['is_live_now'])) {
+      status = 'ongoing';
+    } else if (asBool(json['is_past'])) {
+      status = 'completed';
+    } else if (asBool(json['is_future'])) {
+      status = 'upcoming';
+    } else {
+      status = asString(json['status'], fallback: 'upcoming').toLowerCase();
+    }
 
-  bool get isOngoing => status == 'ongoing';
+    return DashboardClass(
+      id: asString(json['id']),
+      title: asStringOrNull(json['topic']) ??
+          asStringOrNull(json['title']) ??
+          asStringOrNull(asMap(json['course'])?['name']) ??
+          'Class',
+      rawStart: asString(json['start_time']),
+      rawEnd: asString(json['end_time']),
+      status: status,
+    );
+  }
+
+  bool get isOngoing => status == 'ongoing' || status == 'live';
   bool get isUpcoming => status == 'upcoming';
   bool get isCompleted => status == 'completed';
+
+  /// "11:30 AM".
+  String get startTime => _clock(rawStart);
+
+  /// "1:00 PM".
+  String get endTime => _clock(rawEnd);
+
+  /// "11:30 AM – 1:00 PM", or just the start when the end is missing.
+  String get timeRange =>
+      rawEnd.isEmpty ? startTime : '$startTime – $endTime';
+
+  /// Calendar date of the class as written by the server, if present.
+  DateTime? get date {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(rawStart);
+    if (m == null) return null;
+    return DateTime(
+      int.parse(m.group(1)!),
+      int.parse(m.group(2)!),
+      int.parse(m.group(3)!),
+    );
+  }
+
+  /// Formats the wall-clock part of an ISO timestamp, "HH:MM[:SS]", or an
+  /// already formatted "9:00 AM", ignoring any timezone offset.
+  static String _clock(String raw) {
+    if (raw.isEmpty) return '--';
+    if (RegExp(r'[AaPp][Mm]').hasMatch(raw)) return raw.trim();
+    final m = RegExp(r'(?:T|\s|^)(\d{1,2}):(\d{2})').firstMatch(raw);
+    if (m == null) return raw;
+    return Fmt.time('${m.group(1)}:${m.group(2)}');
+  }
 }
 
 /// An entry from `next_assignments`.

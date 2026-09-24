@@ -29,6 +29,7 @@ class LiveSession {
   final SubjectRef? subject;
   final NamedRef? teacher;
   final NamedRef? course;
+  final NamedRef? batch;
 
   const LiveSession({
     required this.id,
@@ -56,9 +57,16 @@ class LiveSession {
     this.subject,
     this.teacher,
     this.course,
+    this.batch,
   });
 
   factory LiveSession.fromJson(Map<String, dynamic> json) {
+    // Join link and password now live on the first meeting part:
+    // `meetings: [{part_number, password, join_url}]`.
+    final meetings = json['meetings'];
+    final meeting = meetings is List && meetings.isNotEmpty
+        ? asMap(meetings.first)
+        : null;
     return LiveSession(
       id: asInt(json['id']),
       topic: asString(json['topic'], fallback: 'Live Class'),
@@ -72,16 +80,20 @@ class LiveSession {
       startTime: asStringOrNull(json['start_time']),
       timezone: asStringOrNull(json['timezone']),
       startUrl: asStringOrNull(json['start_url']),
-      joinUrl: asStringOrNull(json['join_url']),
-      password: asStringOrNull(json['password']),
+      joinUrl: asStringOrNull(json['join_url'] ?? meeting?['join_url']),
+      password: asStringOrNull(json['password'] ?? meeting?['password']),
       encryptedPassword: asStringOrNull(json['encrypted_password']),
       subjectId: json['subject_id'],
       teacherId: json['teacher_id'],
       courseId: json['course_id'],
       createdAt: asStringOrNull(json['created_at']),
       updatedAt: asStringOrNull(json['updated_at']),
-      startDateFormat: asStringOrNull(json['start_date_format']),
-      onlineClassStatus: asStringOrNull(json['online_class_status']),
+      startDateFormat: asStringOrNull(
+        json['start_date_format'] ?? json['start_time_formatted'],
+      ),
+      onlineClassStatus: asStringOrNull(
+        json['online_class_status'] ?? json['class_status'],
+      ),
       subject: json['subject'] == null
           ? null
           : SubjectRef.fromJson(asMap(json['subject']) ?? {}),
@@ -91,6 +103,9 @@ class LiveSession {
       course: json['course'] == null
           ? null
           : NamedRef.fromJson(asMap(json['course']) ?? {}),
+      batch: json['batch'] == null
+          ? null
+          : NamedRef.fromJson(asMap(json['batch']) ?? {}),
     );
   }
 

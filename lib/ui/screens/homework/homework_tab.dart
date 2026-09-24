@@ -9,6 +9,7 @@ import '../../../providers/homework_provider.dart';
 import '../../widgets/state_views.dart';
 import 'homework_detail_screen.dart';
 import 'widgets/homework_card.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Homework list screen styled with the app's signature deep-teal + gold theme.
 class HomeworkTab extends StatefulWidget {
@@ -79,7 +80,7 @@ class _HomeworkTabState extends State<HomeworkTab> {
         centerTitle: false,
         iconTheme: const IconThemeData(color: AppColors.cream),
       ),
-      body: Column(
+      body: ResponsiveBody(child: Column(
         children: [
           // 1. Top Course Filter Bar
           _CourseFilterBar(
@@ -97,7 +98,7 @@ class _HomeworkTabState extends State<HomeworkTab> {
             child: _buildBody(provider, filteredItems),
           ),
         ],
-      ),
+      )),
     );
   }
 

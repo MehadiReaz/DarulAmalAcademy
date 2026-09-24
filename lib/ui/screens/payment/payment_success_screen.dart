@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fee.dart';
 import '../../../providers/fee_provider.dart';
 import 'receipt_viewer_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Screen displayed after a successful fee payment.
 class PaymentSuccessScreen extends StatefulWidget {
@@ -133,7 +134,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
           ),
         ],
       ),
-      body: SafeArea(
+      body: ResponsiveBody(child: SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -354,7 +355,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 

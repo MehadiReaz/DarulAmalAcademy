@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/network/api_client.dart';
+import 'core/storage/adhan_storage.dart';
 import 'core/storage/read_state_storage.dart';
 import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
@@ -13,10 +14,12 @@ import 'data/repositories/fee_repository.dart';
 import 'data/repositories/homework_repository.dart';
 import 'data/repositories/notice_repository.dart';
 import 'data/repositories/notification_repository.dart';
+import 'data/repositories/prayer_times_repository.dart';
 import 'data/repositories/public_repository.dart';
 import 'data/repositories/quran_repository.dart';
 import 'data/repositories/recording_repository.dart';
-import 'data/repositories/ticket_repository.dart';
+import 'data/repositories/support_repository.dart';
+import 'providers/adhan_provider.dart';
 import 'providers/attendance_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/class_provider.dart';
@@ -28,7 +31,7 @@ import 'providers/notification_provider.dart';
 import 'providers/quran_provider.dart';
 import 'providers/recording_provider.dart';
 import 'providers/shell_provider.dart';
-import 'providers/ticket_provider.dart';
+import 'providers/support_provider.dart';
 import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/main_shell.dart';
 import 'ui/screens/splash_screen.dart';
@@ -68,10 +71,17 @@ class DarulAmalApp extends StatelessWidget {
           create: (_) => NoticeProvider(NoticeRepository(client), readState),
         ),
         ChangeNotifierProvider(
-          create: (_) => TicketProvider(TicketRepository(client)),
+          create: (_) => HomeworkProvider(HomeworkRepository(client)),
         ),
         ChangeNotifierProvider(
-          create: (_) => HomeworkProvider(HomeworkRepository(client)),
+          create: (_) => SupportProvider(SupportRepository(client)),
+        ),
+        // Not lazy: loading reschedules the adhan on every app start,
+        // which keeps the OS schedule rolling forward.
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (_) =>
+              AdhanProvider(PrayerTimesRepository(), AdhanStorage())..load(),
         ),
         ChangeNotifierProvider(
           create: (_) => FeeProvider(FeeRepository(client)),

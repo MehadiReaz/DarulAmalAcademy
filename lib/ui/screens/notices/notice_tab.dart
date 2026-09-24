@@ -8,6 +8,7 @@ import '../../../providers/base_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../widgets/state_views.dart';
 import 'notice_detail_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 class NoticeTab extends StatefulWidget {
   const NoticeTab({super.key});
@@ -101,7 +102,7 @@ class _NoticeTabState extends State<NoticeTab> {
             ),
         ],
       ),
-      body: Column(
+      body: ResponsiveBody(child: Column(
         children: [
           // Search Bar
           if (provider.notices.isNotEmpty) _buildSearchBar(),
@@ -109,7 +110,7 @@ class _NoticeTabState extends State<NoticeTab> {
           // List or Grid
           Expanded(child: _buildBody(provider, filtered)),
         ],
-      ),
+      )),
     );
   }
 

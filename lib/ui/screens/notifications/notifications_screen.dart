@@ -10,7 +10,7 @@ import '../../widgets/state_views.dart';
 import '../homework/homework_detail_screen.dart';
 import '../notices/notice_detail_screen.dart';
 import '../payment/pay_fees_screen.dart';
-import '../support/support_tab.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Notification centre, backed by `GET /student/notifications` and
 /// `POST /auth/notifications/{id}/read`.
@@ -49,9 +49,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'fee':
         destination = const PayFeesScreen();
         break;
-      case 'ticket':
-        destination = const SupportTab();
-        break;
     }
 
     final target = destination;
@@ -78,7 +75,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
         ],
       ),
-      body: _body(provider),
+      body: ResponsiveBody(child: _body(provider)),
     );
   }
 

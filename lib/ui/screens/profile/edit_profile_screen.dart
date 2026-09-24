@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_toast.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Edit the fields `POST /auth/student/profile` accepts: name, email,
 /// phone, address, date_of_birth, gender, blood_group, and photo.
@@ -133,7 +134,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Profile')),
-      body: Form(
+      body: ResponsiveBody(child: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 40),
@@ -367,7 +368,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 }

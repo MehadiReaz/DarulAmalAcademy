@@ -6,6 +6,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/notice_provider.dart';
 import '../../widgets/state_views.dart';
+import '../../../core/utils/responsive.dart';
 
 class NoticeDetailScreen extends StatefulWidget {
   final int noticeId;
@@ -37,7 +38,7 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
         backgroundColor: AppColors.bgDeep,
         elevation: 0,
       ),
-      body: _buildBody(provider),
+      body: ResponsiveBody(child: _buildBody(provider)),
     );
   }
 

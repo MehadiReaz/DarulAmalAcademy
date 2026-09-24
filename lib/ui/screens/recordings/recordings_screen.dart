@@ -9,6 +9,7 @@ import '../../widgets/state_views.dart';
 import 'drive_player_screen.dart';
 import 'widgets/recording_card.dart';
 import 'youtube_player_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Class recordings, backed by `GET /student/recordings`.
 ///
@@ -63,7 +64,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Recordings')),
-      body: _body(provider),
+      body: ResponsiveBody(child: _body(provider)),
     );
   }
 

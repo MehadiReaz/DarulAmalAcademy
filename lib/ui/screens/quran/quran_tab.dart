@@ -8,6 +8,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/quran_provider.dart';
 import '../../widgets/state_views.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Qur'an progress dashboard driven by `GET /student/quran-progress`.
 class QuranTab extends StatefulWidget {
@@ -44,9 +45,43 @@ class _QuranTabState extends State<QuranTab> {
       );
     }
 
+    final hasData =
+        (progress != null && !progress.isEmpty) || logs.isNotEmpty;
+    if (!hasData) {
+      Future<void> retry() async {
+        await Future.wait([quran.load(force: true), auth.reloadProfile()]);
+      }
+
+      return Scaffold(
+        appBar: AppBar(title: const Text("Qur'an Progress")),
+        body: quran.state == LoadState.error
+            ? ErrorView(
+                message: quran.error ?? "Could not load Qur'an progress.",
+                onRetry: retry,
+              )
+            : RefreshIndicator(
+                color: AppColors.gold,
+                backgroundColor: AppColors.surface,
+                onRefresh: retry,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: constraints.maxHeight,
+                      child: const EmptyView(
+                        icon: Icons.menu_book_outlined,
+                        title: 'No information found',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text("Qur'an Progress")),
-      body: RefreshIndicator(
+      body: ResponsiveBody(child: RefreshIndicator(
         color: AppColors.gold,
         backgroundColor: AppColors.surface,
         onRefresh: () async {
@@ -97,7 +132,7 @@ class _QuranTabState extends State<QuranTab> {
             const _FooterNote(),
           ],
         ),
-      ),
+      )),
     );
   }
 }

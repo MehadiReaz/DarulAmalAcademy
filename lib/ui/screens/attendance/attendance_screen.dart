@@ -6,8 +6,9 @@ import '../../../data/models/attendance.dart';
 import '../../../providers/attendance_provider.dart';
 import '../../../providers/base_provider.dart';
 import '../../widgets/state_views.dart';
+import '../../../core/utils/responsive.dart';
 
-/// Attendance, backed by `GET /student/my-attendances`.
+/// Attendance, backed by `GET /api/student/attendance`.
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
 
@@ -30,7 +31,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Attendance')),
-      body: _body(provider),
+      body: ResponsiveBody(child: _body(provider)),
     );
   }
 
@@ -65,11 +66,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           _SummaryCard(summary: summary),
           const SizedBox(height: 20),
           const Text(
-            'By subject',
+            'By course',
             style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
-          ...provider.groups.map((g) => _SubjectCard(group: g)),
+          ...provider.groups.map((g) => _GroupCard(group: g)),
         ],
       ),
     );
@@ -152,9 +153,9 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class _SubjectCard extends StatelessWidget {
-  final SubjectAttendanceGroup group;
-  const _SubjectCard({required this.group});
+class _GroupCard extends StatelessWidget {
+  final AttendanceGroup group;
+  const _GroupCard({required this.group});
 
   Color get _color {
     if (group.percentage >= 75) return AppColors.success;
@@ -181,7 +182,7 @@ class _SubjectCard extends StatelessWidget {
           iconColor: AppColors.muted,
           collapsedIconColor: AppColors.muted,
           title: Text(
-            group.subjectName,
+            group.title,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
           subtitle: Padding(
@@ -199,6 +200,16 @@ class _SubjectCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 7),
+                if (group.subtitle != null) ...[
+                  Text(
+                    group.subtitle!,
+                    style: const TextStyle(
+                      color: AppColors.goldLight,
+                      fontSize: 10.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                ],
                 Text(
                   '${group.percentage}% · ${group.present} present · '
                   '${group.late} late · ${group.absent} absent',
@@ -224,15 +235,37 @@ class _SubjectCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
+            margin: const EdgeInsets.only(top: 5),
             width: 7,
             height: 7,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
-          Text(r.dateLabel ?? '—', style: const TextStyle(fontSize: 11.5)),
-          const Spacer(),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  r.dateLabel ?? '—',
+                  style: const TextStyle(fontSize: 11.5),
+                ),
+                if (r.className != null && r.className!.isNotEmpty)
+                  Text(
+                    r.className!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 10.5,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           if (r.isLate && r.lateMinutes > 0)
             Padding(
               padding: const EdgeInsets.only(right: 8),

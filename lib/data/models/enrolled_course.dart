@@ -1,71 +1,108 @@
 import '../../core/utils/json_utils.dart';
 import 'student_user.dart';
 
-/// Matches `StudentMyClassController@myCourses`.
+/// One course from `GET /api/student/courses`.
 ///
-/// The controller returns the *enrollment* records (`$user->courses()`), each
-/// with the `course` relation loaded plus an appended `total_students`.
-/// Field names on the pivot are not guaranteed, so everything is optional.
+/// The endpoint returns flat course objects with the student's batches for
+/// that course nested inside:
+/// `{id, name, image_url, primary_batch_id, duration, batches: [...]}`.
+/// Course details and tabs are addressed by *batch* id, never course id.
 class EnrolledCourse {
-  final int? id;
-  final int? courseId;
-  final int totalStudents;
-  final CourseDetail? course;
+  final int id;
+  final String name;
+  final String? slug;
+  final String? description;
+  final String? imageUrl;
+  final int? primaryBatchId;
+  final String? enrolledDate;
+
+  /// Pre-formatted by the server, e.g. "6 months".
+  final String? duration;
+  final int studentsCount;
+  final List<CourseBatch> batches;
 
   const EnrolledCourse({
-    this.id,
-    this.courseId,
-    this.totalStudents = 0,
-    this.course,
+    required this.id,
+    required this.name,
+    this.slug,
+    this.description,
+    this.imageUrl,
+    this.primaryBatchId,
+    this.enrolledDate,
+    this.duration,
+    this.studentsCount = 0,
+    this.batches = const [],
   });
 
   factory EnrolledCourse.fromJson(Map<String, dynamic> json) {
     return EnrolledCourse(
-      id: asIntOrNull(json['id']),
-      courseId: asIntOrNull(json['course_id']),
-      totalStudents: asInt(json['total_students']),
-      course: json['course'] == null
-          ? null
-          : CourseDetail.fromJson(asMap(json['course']) ?? {}),
+      id: asInt(json['id']),
+      name: asString(json['name'], fallback: 'Course'),
+      slug: asStringOrNull(json['slug']),
+      description: asStringOrNull(json['description']),
+      imageUrl: asStringOrNull(json['image_url']),
+      primaryBatchId: asIntOrNull(json['primary_batch_id']),
+      enrolledDate: asStringOrNull(json['enrolled_date']),
+      duration: asStringOrNull(json['duration']),
+      studentsCount: asInt(json['students_count']),
+      batches: asList(json['batches'], CourseBatch.fromJson),
     );
   }
 
-  String get name => course?.name ?? 'Course';
-  List<NamedRef> get subjects => course?.subjects ?? const [];
+  /// The batch the course card opens: the server's primary batch, else
+  /// the first one listed.
+  CourseBatch? get primaryBatch {
+    for (final b in batches) {
+      if (b.id == primaryBatchId) return b;
+    }
+    return batches.isEmpty ? null : batches.first;
+  }
+
+  /// Batch id for `/student/courses/{batchId}`, or null if the student
+  /// has no batch in this course.
+  int? get batchId => primaryBatchId ?? primaryBatch?.id;
 }
 
-class CourseDetail {
-  final int? id;
+/// A batch as it appears inside `/courses` (`time`), `/batches` and the
+/// course-tab `selected_batch` (`formatted_time`, `days`).
+class CourseBatch {
+  final int id;
   final String? name;
-  final String? description;
-  final String? thumbnail;
-  final String? feeType;
-  final String? price;
-  final String? duration;
-  final String? durationType;
-  final List<NamedRef> subjects;
 
-  const CourseDetail({
-    this.id,
+  /// e.g. "06:00 PM - 07:30 PM".
+  final String? time;
+  final List<String> days;
+  final NamedRef? teacher;
+
+  const CourseBatch({
+    required this.id,
     this.name,
-    this.description,
-    this.thumbnail,
-    this.feeType,
-    this.price,
-    this.duration,
-    this.durationType,
-    this.subjects = const [],
+    this.time,
+    this.days = const [],
+    this.teacher,
   });
 
-  factory CourseDetail.fromJson(Map<String, dynamic> json) => CourseDetail(
-        id: asIntOrNull(json['id']),
-        name: asStringOrNull(json['name']),
-        description: asStringOrNull(json['description']),
-        thumbnail: asStringOrNull(json['thumbnail']),
-        feeType: asStringOrNull(json['fee_type']),
-        price: asStringOrNull(json['price']),
-        duration: asStringOrNull(json['duration']),
-        durationType: asStringOrNull(json['duration_type']),
-        subjects: asList(json['subjects'], NamedRef.fromJson),
-      );
+  factory CourseBatch.fromJson(Map<String, dynamic> json) {
+    final teacher = asMap(json['teacher']);
+    final days = json['days'];
+    return CourseBatch(
+      id: asInt(json['id']),
+      name: asStringOrNull(json['name']),
+      time: asStringOrNull(json['time'] ?? json['formatted_time']),
+      days: days is List
+          ? days.map((d) => d.toString()).where((d) => d.isNotEmpty).toList()
+          : const [],
+      teacher: teacher == null ? null : NamedRef.fromJson(teacher),
+    );
+  }
+
+  /// "Saturday, Monday, Wednesday · 06:00 PM - 07:30 PM", or whichever
+  /// half is known; null when neither is.
+  String? get schedule {
+    final parts = [
+      if (days.isNotEmpty) days.join(', '),
+      ?time,
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
 }

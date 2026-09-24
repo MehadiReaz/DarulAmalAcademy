@@ -14,7 +14,6 @@ import 'package:darul_amal/data/models/pagination.dart';
 import 'package:darul_amal/data/models/quran_progress.dart';
 import 'package:darul_amal/data/models/recording.dart';
 import 'package:darul_amal/data/models/student_user.dart';
-import 'package:darul_amal/data/models/support_ticket.dart';
 import 'package:darul_amal/data/repositories/homework_repository.dart';
 
 /// Parses the real captured API responses through every model.
@@ -174,32 +173,100 @@ void main() {
   });
 
   group('attendance', () {
-    test('subject-keyed map flattens into sorted groups', () {
+    // Shape of `GET /api/student/attendance` as of Sep 2026 (values are
+    // made up). The old subject-keyed `my-attendances` endpoint is gone.
+    Map<String, dynamic> record(int id, String status, String date) => {
+          'id': id,
+          'date': date,
+          'date_formatted': date.split('-').reversed.join('/'),
+          'status': status,
+          'source': 'live_class',
+          'attendance_percentage': status == 'present' ? 100 : 0,
+          'class_name': 'Topic $id',
+          'course': {'id': 4, 'name': 'Ibtidaiyyah'},
+          'batch': {'id': 8, 'name': 'Ibtidaiyyah - Noon Batch'},
+          'teacher': {'id': 15, 'name': 'Teacher A'},
+          'session': {'id': id, 'topic': 'Topic $id'},
+        };
+
+    Map<String, dynamic> attendancePayload() => {
+          'attendances': {
+            'current_page': 1,
+            'data': [
+              record(8, 'present', '2026-09-20'),
+              record(5, 'present', '2026-09-13'),
+            ],
+            'last_page': 1,
+            'per_page': 20,
+            'total': 2,
+          },
+          'courses': [
+            {'id': 4, 'name': 'Ibtidaiyyah'},
+            {'id': 1, 'name': 'Nurani'},
+          ],
+          'filters': [],
+        };
+
+    test('records parse out of the nested paginator', () {
+      final records = AttendanceRecord.listFrom(attendancePayload());
+
+      expect(records, hasLength(2));
+      final r = records.first;
+      expect(r.id, 8);
+      expect(r.isPresent, isTrue);
+      expect(r.dateLabel, '20/09/2026');
+      expect(r.date, DateTime(2026, 9, 20));
+      expect(r.source, 'live_class');
+      expect(r.className, 'Topic 8');
+      expect(r.course?.name, 'Ibtidaiyyah');
+      expect(r.batch?.name, 'Ibtidaiyyah - Noon Batch');
+      expect(r.teacher?.name, 'Teacher A');
+    });
+
+    test('the courses filter list is not mistaken for records', () {
       final groups =
-          SubjectAttendanceGroup.parseAll(payload('GET student/my-attendances'));
+          AttendanceGroup.group(AttendanceRecord.listFrom(attendancePayload()));
 
-      expect(groups, isNotEmpty);
+      expect(groups, hasLength(1));
+      expect(groups.single.title, 'Ibtidaiyyah');
+      expect(groups.single.subtitle, 'Ibtidaiyyah - Noon Batch');
+      expect(groups.single.total, 2);
+      expect(groups.single.percentage, 100);
+    });
 
-      // Names come off the records, not the map key.
-      expect(
-        groups.map((g) => g.subjectName),
-        everyElement(isNot(startsWith('Subject '))),
-      );
+    test('groups by course, newest first; late is not present', () {
+      AttendanceRecord rec(int id, String status, String date, int course) =>
+          AttendanceRecord.fromJson({
+            'id': id,
+            'status': status,
+            'date': date,
+            'course': {'id': course, 'name': 'Course $course'},
+          });
 
-      // Sorted alphabetically.
-      final names = groups.map((g) => g.subjectName).toList();
-      expect(names, orderedEquals([...names]..sort()));
+      final groups = AttendanceGroup.group([
+        rec(1, 'present', '2026-09-01', 2),
+        rec(2, 'late', '2026-09-10', 2),
+        rec(3, 'absent', '2026-09-05', 2),
+        rec(4, 'present', '2026-09-03', 1),
+      ]);
 
-      final nurani = groups.firstWhere((g) => g.subjectName == 'Nurani Qaida');
-      expect(nurani.total, 3);
-      expect(nurani.present, 2);
-      expect(nurani.late, 1);
-      // Late must not count as present.
-      expect(nurani.percentage, 67);
+      expect(groups.map((g) => g.title), ['Course 1', 'Course 2']);
+      final c2 = groups[1];
+      expect(c2.records.map((r) => r.id), [2, 3, 1]);
+      expect(c2.present, 1);
+      expect(c2.late, 1);
+      expect(c2.absent, 1);
+      expect(c2.percentage, 33);
 
       final summary = AttendanceSummary.from(groups);
-      expect(summary.total, greaterThan(0));
-      expect(summary.percentage, inInclusiveRange(0, 100));
+      expect(summary.total, 4);
+      expect(summary.present, 2);
+    });
+
+    test('accepts a bare list or paginator too', () {
+      final item = {'id': 1, 'status': 'present'};
+      expect(AttendanceRecord.listFrom([item]), hasLength(1));
+      expect(AttendanceRecord.listFrom({'data': [item]}), hasLength(1));
     });
   });
 
@@ -445,40 +512,6 @@ void main() {
     });
   });
 
-  group('tickets', () {
-    test('create response parses from the root, not a ticket wrapper', () {
-      final t = SupportTicket.fromJson(mapPayload('POST student/tickets'));
-
-      expect(t.id, 13);
-      expect(t.ticketNo, 'TKT-GWY9WQEO');
-      expect(t.category, 'class_time_change');
-      expect(t.priority, 'high');
-      expect(t.priorityLabel, 'High');
-      expect(t.isHighPriority, isTrue);
-
-      // Derived from `status`, since `is_resolved` is not a column.
-      expect(t.status, 'open');
-      expect(t.isResolved, isFalse);
-      expect(t.statusLabel, 'Open');
-    });
-
-    test('list parses as a raw Laravel paginator', () {
-      final map = mapPayload('GET student/tickets');
-      final page = Paginated(
-        items: (map['data'] as List)
-            .cast<Map<String, dynamic>>()
-            .map(SupportTicket.fromJson)
-            .toList(),
-        pagination: Pagination.fromEnvelope(map),
-      );
-
-      expect(page.items, isEmpty);
-      expect(page.pagination.total, 0);
-      expect(page.pagination.perPage, 15);
-      expect(page.pagination.hasMore, isFalse);
-    });
-  });
-
   group('classes', () {
     test('my-classes parses the renamed endpoint', () {
       final list = payload('GET student/my-classes') as List;
@@ -508,14 +541,14 @@ void main() {
       expect(() => FeeTransaction.fromJson({}), returnsNormally);
       expect(() => Recording.fromJson({}), returnsNormally);
       expect(() => Homework.fromJson({}), returnsNormally);
-      expect(() => SupportTicket.fromJson({}), returnsNormally);
       expect(() => QuranProgressBundle.fromJson({}), returnsNormally);
       expect(() => ClassRoutineBundle.fromJson({}), returnsNormally);
       expect(() => DashboardData.fromJson({}), returnsNormally);
 
-      // Attendance receives a list where a map is expected.
-      expect(SubjectAttendanceGroup.parseAll([1, 2, 3]), isEmpty);
-      expect(SubjectAttendanceGroup.parseAll(null), isEmpty);
+      // Attendance receives junk where a paginator is expected.
+      expect(AttendanceRecord.listFrom([1, 2, 3]), isEmpty);
+      expect(AttendanceRecord.listFrom(null), isEmpty);
+      expect(AttendanceRecord.listFrom({'attendances': 'nope'}), isEmpty);
 
       // HomeworkDetail.attachments arrives as a map, a list, or null.
       expect(HomeworkDetail.fromJson({'attachments': null}).attachments,

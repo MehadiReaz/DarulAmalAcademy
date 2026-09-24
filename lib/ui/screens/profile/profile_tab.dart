@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../adhan/adhan_settings_screen.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/student_user.dart';
@@ -15,7 +16,7 @@ import '../../../providers/notification_provider.dart';
 import '../../../providers/quran_provider.dart';
 import '../../../providers/recording_provider.dart';
 import '../../../providers/shell_provider.dart';
-import '../../../providers/ticket_provider.dart';
+import '../../../providers/support_provider.dart';
 import '../attendance/attendance_screen.dart';
 import '../courses/live_sessions_screen.dart';
 import '../courses/my_courses_screen.dart';
@@ -24,9 +25,9 @@ import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../routine/routine_screen.dart';
-import '../support/support_tab.dart';
 import '../../widgets/app_toast.dart';
 import 'edit_profile_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -58,7 +59,6 @@ class ProfileTab extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
 
     context.read<ClassProvider>().reset();
-    context.read<TicketProvider>().reset();
     context.read<DashboardProvider>().reset();
     context.read<NoticeProvider>().reset();
     context.read<HomeworkProvider>().reset();
@@ -68,6 +68,7 @@ class ProfileTab extends StatelessWidget {
     context.read<QuranProvider>().reset();
     context.read<NotificationProvider>().reset();
     context.read<ShellProvider>().reset();
+    context.read<SupportProvider>().reset();
     await context.read<AuthProvider>().logout();
   }
 
@@ -89,7 +90,7 @@ class ProfileTab extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
+      body: ResponsiveBody(child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 100),
         children: [
           // Header Hero Banner
@@ -178,8 +179,8 @@ class ProfileTab extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // Finance & Support Section
-          const _SectionHeader(title: 'FINANCE & SUPPORT'),
+          // Finance Section
+          const _SectionHeader(title: 'FINANCE'),
           const SizedBox(height: 10),
           _ActionCardGroup(
             children: [
@@ -187,17 +188,27 @@ class ProfileTab extends StatelessWidget {
                 icon: Icons.credit_card_rounded,
                 title: 'Fees & Payments',
                 subtitle: 'Fee dues, pay online & receipts',
+                isLast: true,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PayFeesScreen()),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Prayer Section
+          const _SectionHeader(title: 'PRAYER'),
+          const SizedBox(height: 10),
+          _ActionCardGroup(
+            children: [
               _ActionTile(
-                icon: Icons.support_agent_rounded,
-                title: 'Help & Support',
-                subtitle: 'Submit support tickets',
+                icon: Icons.mosque_outlined,
+                title: 'Prayer Times & Adhan',
+                subtitle: 'Adhan alerts, sound, reminders & location',
                 isLast: true,
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SupportTab()),
+                  MaterialPageRoute(builder: (_) => const AdhanSettingsScreen()),
                 ),
               ),
             ],
@@ -240,7 +251,7 @@ class ProfileTab extends StatelessWidget {
             ],
           ),
         ],
-      ),
+      )),
     );
   }
 }

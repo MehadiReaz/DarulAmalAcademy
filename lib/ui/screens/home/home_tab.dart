@@ -11,7 +11,6 @@ import '../../../providers/notice_provider.dart';
 import '../../../providers/notification_provider.dart';
 import '../../../providers/shell_provider.dart';
 import '../attendance/attendance_screen.dart';
-import '../batches/my_batches_screen.dart';
 import '../courses/my_courses_screen.dart';
 import '../homework/homework_detail_screen.dart';
 import '../homework/homework_tab.dart';
@@ -20,7 +19,8 @@ import '../notifications/notifications_screen.dart';
 import '../payment/pay_fees_screen.dart';
 import '../recordings/recordings_screen.dart';
 import '../routine/routine_screen.dart';
-import '../support/support_tab.dart';
+import 'widgets/prayer_times_banner.dart';
+import '../../../core/utils/responsive.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
@@ -52,7 +52,7 @@ class _HomeTabState extends State<HomeTab> {
     final dashData = dashboard.data;
 
     return Scaffold(
-      body: SafeArea(
+      body: ResponsiveBody(maxWidth: Responsive.gridMaxWidth, child: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           color: AppColors.gold,
@@ -89,6 +89,10 @@ class _HomeTabState extends State<HomeTab> {
                 className: user?.className,
                 courseNames: dashData?.courseNames ?? [],
               ),
+              const SizedBox(height: 18),
+
+              // Next prayer + today's times
+              const PrayerTimesBanner(),
               const SizedBox(height: 18),
 
               // Academic Performance & Attendance Overview Card
@@ -132,7 +136,7 @@ class _HomeTabState extends State<HomeTab> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }
@@ -810,6 +814,18 @@ class _LiveClassCard extends StatelessWidget {
   final DashboardProvider dashboard;
   const _LiveClassCard({required this.dashboard});
 
+  /// "11:30 AM – 1:00 PM", prefixed with the day when it isn't today.
+  static String _classWhen(DashboardClass c) {
+    final date = c.date;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (date == null || date == today) return c.timeRange;
+    final day = date == today.add(const Duration(days: 1))
+        ? 'Tomorrow'
+        : Fmt.date(date);
+    return '$day · ${c.timeRange}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final live = dashboard.liveClass;
@@ -887,7 +903,7 @@ class _LiveClassCard extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                '${featured.startTime} – ${featured.endTime}',
+                _classWhen(featured),
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w500,
@@ -1035,8 +1051,15 @@ class _QuickActionsGrid extends StatelessWidget {
     void push(Widget screen) =>
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
-    return GridView.count(
-      crossAxisCount: 3,
+    return LayoutBuilder(
+      builder: (context, constraints) => GridView.count(
+      // 3 across on phones, up to 6 on tablets.
+      crossAxisCount: Responsive.columns(
+        constraints.maxWidth,
+        minItemWidth: 120,
+        min: 3,
+        max: 6,
+      ),
       mainAxisSpacing: 11,
       crossAxisSpacing: 11,
       shrinkWrap: true,
@@ -1047,11 +1070,6 @@ class _QuickActionsGrid extends StatelessWidget {
           icon: Icons.school_rounded,
           label: 'My Courses',
           onTap: () => push(const MyCoursesScreen()),
-        ),
-        _ModuleItem(
-          icon: Icons.groups_3_rounded,
-          label: 'My Batches',
-          onTap: () => push(const MyBatchesScreen()),
         ),
         _ModuleItem(
           icon: Icons.calendar_month_rounded,
@@ -1090,12 +1108,8 @@ class _QuickActionsGrid extends StatelessWidget {
           label: 'Attendance',
           onTap: () => push(const AttendanceScreen()),
         ),
-        _ModuleItem(
-          icon: Icons.support_agent_rounded,
-          label: 'Support',
-          onTap: () => push(const SupportTab()),
-        ),
       ],
+      ),
     );
   }
 }

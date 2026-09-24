@@ -72,6 +72,11 @@ class AppTheme {
       dividerColor: AppColors.line,
       progressIndicatorTheme:
           const ProgressIndicatorThemeData(color: AppColors.gold),
+      // Bottom sheets stay phone-width on tablets instead of spanning the
+      // whole screen.
+      bottomSheetTheme: const BottomSheetThemeData(
+        constraints: BoxConstraints(maxWidth: 640),
+      ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.surfaceAlt,

@@ -9,6 +9,7 @@ import '../../../providers/base_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_toast.dart';
+import '../../../core/utils/responsive.dart';
 
 class LiveSessionsScreen extends StatefulWidget {
   const LiveSessionsScreen({super.key});
@@ -86,13 +87,13 @@ class _LiveSessionsScreenState extends State<LiveSessionsScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: ResponsiveBody(child: RefreshIndicator(
         onRefresh: () =>
             context.read<ClassProvider>().loadLiveSessions(force: true),
         color: AppColors.gold,
         backgroundColor: AppColors.surface,
         child: _buildBody(context, state, error, bundle, categories, currentSessions),
-      ),
+      )),
     );
   }
 

@@ -1,77 +1,105 @@
 import '../../core/utils/json_utils.dart';
 import 'student_user.dart';
 
-/// A single attendance record from `GET /student/my-attendances`.
+/// A single attendance record from `GET /api/student/attendance`.
 class AttendanceRecord {
   final int id;
-  final int? subjectId;
 
-  /// 'present' | 'late' | 'absent'
+  /// 'present' | 'late' | 'absent' (anything else is shown as-is).
   final String status;
   final String? rawDate;
 
-  /// Pre-formatted by the server as "04/07/2026".
+  /// Pre-formatted by the server as "20/09/2026".
   final String? dateLabel;
 
-  /// Minutes late, sent as a string.
+  /// What the class covered, e.g. the live session topic.
+  final String? className;
+
+  /// Where the record came from, e.g. `live_class`.
+  final String? source;
+
+  /// Minutes late, when the server sends it.
   final int lateMinutes;
 
-  final NamedRef? subject;
+  final NamedRef? course;
+  final NamedRef? batch;
   final NamedRef? teacher;
 
   const AttendanceRecord({
     required this.id,
-    this.subjectId,
     this.status = 'absent',
     this.rawDate,
     this.dateLabel,
+    this.className,
+    this.source,
     this.lateMinutes = 0,
-    this.subject,
+    this.course,
+    this.batch,
     this.teacher,
   });
 
-  factory AttendanceRecord.fromJson(Map<String, dynamic> json) =>
-      AttendanceRecord(
-        id: asInt(json['id']),
-        subjectId: asIntOrNull(json['subject_id']),
-        status: asString(json['status'], fallback: 'absent').toLowerCase(),
-        rawDate: asStringOrNull(json['date']),
-        dateLabel: asStringOrNull(json['date_time']),
-        lateMinutes: asInt(json['late_amount']),
-        subject: json['subject'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['subject']) ?? {}),
-        teacher: json['teacher'] == null
-            ? null
-            : NamedRef.fromJson(asMap(json['teacher']) ?? {}),
-      );
+  factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
+    NamedRef? ref(dynamic v) {
+      final m = asMap(v);
+      return m == null ? null : NamedRef.fromJson(m);
+    }
+
+    return AttendanceRecord(
+      id: asInt(json['id']),
+      status: asString(json['status'], fallback: 'absent').toLowerCase(),
+      rawDate: asStringOrNull(json['date']),
+      dateLabel: asStringOrNull(json['date_formatted'] ?? json['date_time']),
+      className: asStringOrNull(
+        json['class_name'] ?? asMap(json['session'])?['topic'],
+      ),
+      source: asStringOrNull(json['source']),
+      lateMinutes: asInt(json['late_amount']),
+      course: ref(json['course']),
+      batch: ref(json['batch']),
+      teacher: ref(json['teacher']),
+    );
+  }
 
   bool get isPresent => status == 'present';
   bool get isLate => status == 'late';
-  bool get isAbsent => status == 'absent';
+  bool get isAbsent => !isPresent && !isLate;
 
   DateTime? get date => asDate(rawDate);
 
   String get statusLabel {
     if (isPresent) return 'Present';
     if (isLate) return 'Late';
-    return 'Absent';
+    if (status == 'absent' || status.isEmpty) return 'Absent';
+    return status[0].toUpperCase() + status.substring(1);
+  }
+
+  /// Parses the list out of any of the shapes the endpoint has used:
+  /// `{attendances: <paginator>}`, a bare paginator, or a plain list.
+  static List<AttendanceRecord> listFrom(dynamic data) {
+    dynamic items = data;
+    final map = asMap(data);
+    if (map != null) {
+      items = map['attendances'] ?? map;
+      final inner = asMap(items);
+      if (inner != null) items = inner['data'];
+    }
+    if (items is! List) return const [];
+    return asList(items, AttendanceRecord.fromJson);
   }
 }
 
-/// One subject's worth of attendance.
+/// One course's worth of attendance.
 ///
-/// `GET /student/my-attendances` returns a **map keyed by subject id**
-/// (`{"1": [...], "8": [...]}`), not a list — so this flattens it into
-/// something sortable and renderable.
-class SubjectAttendanceGroup {
-  final int subjectId;
-  final String subjectName;
+/// Records carry a course and batch but no subject, so the screen groups
+/// by course (falling back to the batch name).
+class AttendanceGroup {
+  final String title;
+  final String? subtitle;
   final List<AttendanceRecord> records;
 
-  const SubjectAttendanceGroup({
-    required this.subjectId,
-    required this.subjectName,
+  const AttendanceGroup({
+    required this.title,
+    this.subtitle,
     this.records = const [],
   });
 
@@ -87,46 +115,45 @@ class SubjectAttendanceGroup {
 
   int get percentage => (fraction * 100).round();
 
-  /// Parses the whole `data` map into a list sorted by subject name.
-  static List<SubjectAttendanceGroup> parseAll(dynamic data) {
-    final map = asMap(data);
-    if (map == null) return const [];
+  /// Groups [records] by course, newest record first, groups sorted by
+  /// title.
+  static List<AttendanceGroup> group(List<AttendanceRecord> records) {
+    final byKey = <String, List<AttendanceRecord>>{};
+    for (final r in records) {
+      final key = r.course != null
+          ? 'c${r.course!.id}'
+          : (r.batch != null ? 'b${r.batch!.id}' : 'other');
+      byKey.putIfAbsent(key, () => []).add(r);
+    }
 
-    final groups = <SubjectAttendanceGroup>[];
-
-    map.forEach((key, value) {
-      if (value is! List) return;
-      final records = asList(value, AttendanceRecord.fromJson);
-      if (records.isEmpty) return;
-
-      // The subject name lives on the records, not the map key.
-      final name = records
-              .map((r) => r.subject?.name)
-              .firstWhere((n) => n != null && n.isNotEmpty, orElse: () => null) ??
-          'Subject $key';
-
-      // Newest first.
-      records.sort((a, b) {
+    final groups = byKey.values.map((list) {
+      list.sort((a, b) {
         final ad = a.date, bd = b.date;
         if (ad == null && bd == null) return 0;
         if (ad == null) return 1;
         if (bd == null) return -1;
         return bd.compareTo(ad);
       });
-
-      groups.add(SubjectAttendanceGroup(
-        subjectId: int.tryParse(key.toString()) ?? records.first.subjectId ?? 0,
-        subjectName: name,
-        records: records,
-      ));
-    });
-
-    groups.sort((a, b) => a.subjectName.compareTo(b.subjectName));
+      final first = list.first;
+      final batches = list
+          .map((r) => r.batch?.name)
+          .whereType<String>()
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      return AttendanceGroup(
+        title: first.course?.name ?? first.batch?.name ?? 'Other classes',
+        subtitle: first.course != null && batches.length == 1
+            ? batches.first
+            : null,
+        records: list,
+      );
+    }).toList()
+      ..sort((a, b) => a.title.compareTo(b.title));
     return groups;
   }
 }
 
-/// Roll-up across every subject, for the summary header.
+/// Roll-up across every course, for the summary header.
 class AttendanceSummary {
   final int present;
   final int late;
@@ -138,7 +165,7 @@ class AttendanceSummary {
     this.absent = 0,
   });
 
-  factory AttendanceSummary.from(List<SubjectAttendanceGroup> groups) {
+  factory AttendanceSummary.from(List<AttendanceGroup> groups) {
     var p = 0, l = 0, a = 0;
     for (final g in groups) {
       p += g.present;

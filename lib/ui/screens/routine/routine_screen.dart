@@ -7,6 +7,7 @@ import '../../../data/models/class_routine.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../widgets/state_views.dart';
+import '../../../core/utils/responsive.dart';
 
 /// ISO weekday numbers, matching `ClassRoutine::WEEK_DAYS` server-side
 /// (1 = Monday … 7 = Sunday). File-level so both the standalone screen
@@ -33,7 +34,7 @@ class RoutineScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Class Routine')),
-      body: const RoutineBody(),
+      body: ResponsiveBody(child: const RoutineBody()),
     );
   }
 }

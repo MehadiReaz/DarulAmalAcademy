@@ -7,6 +7,7 @@ import '../../../core/utils/json_utils.dart';
 import '../../../providers/base_provider.dart';
 import '../../../providers/class_provider.dart';
 import '../../widgets/state_views.dart';
+import '../../../core/utils/responsive.dart';
 
 class MyBatchesScreen extends StatefulWidget {
   const MyBatchesScreen({super.key});
@@ -32,7 +33,7 @@ class _MyBatchesScreenState extends State<MyBatchesScreen> {
       appBar: AppBar(
         title: const Text('My Batches'),
       ),
-      body: _buildBody(provider),
+      body: ResponsiveBody(child: _buildBody(provider)),
     );
   }
 

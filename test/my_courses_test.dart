@@ -1,4 +1,5 @@
 import 'package:darul_amal/core/network/api_client.dart';
+import 'package:darul_amal/data/models/enrolled_course.dart';
 import 'package:darul_amal/data/repositories/class_repository.dart';
 import 'package:darul_amal/providers/class_provider.dart';
 import 'package:darul_amal/ui/screens/courses/my_courses_screen.dart';
@@ -17,33 +18,29 @@ class FakeCoursesApiClient extends ApiClient {
     Options? options,
     CancelToken? cancelToken,
   }) async {
-    if (path.contains('/batches')) {
+    if (path.contains('/courses')) {
+      // Shape of `GET /api/student/courses` (Sep 2026): flat courses with
+      // the student's batches nested. Batch id deliberately differs from
+      // the course id, which is what the card must open.
       return [
         {
-          'id': 1,
-          'name': 'Nurani - Evening Batch',
-          'course_id': 1,
-          'schedule': '06:00 PM - 07:30 PM',
-          'teacher': {'name': 'Qari Mahmood Al-Hussary'},
+          'id': 4,
+          'name': 'Nurani',
+          'slug': 'nurani',
+          'image_url': null,
+          'primary_batch_id': 8,
           'duration': '6 months',
+          'students_count': 25,
+          'batches': [
+            {
+              'id': 8,
+              'name': 'Nurani - Evening Batch',
+              'time': '06:00 PM - 07:30 PM',
+              'teacher': {'id': 2, 'name': 'Qari Mahmood Al-Hussary'},
+            },
+          ],
         },
       ];
-    }
-    if (path.contains('/courses')) {
-      return {
-        'courses': [
-          {
-            'id': 1,
-            'course_id': 1,
-            'total_students': 25,
-            'course': {
-              'id': 1,
-              'name': 'Nurani',
-              'duration': '6 months',
-            },
-          },
-        ],
-      };
     }
     return {'data': []};
   }
@@ -91,5 +88,37 @@ void main() {
     // Verify Course Details Action Button
     expect(find.text('Course Details'), findsOneWidget);
     expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
+  });
+
+  group('EnrolledCourse', () {
+    test('opens the primary batch, not the course id', () {
+      final c = EnrolledCourse.fromJson({
+        'id': 4,
+        'name': 'Ibtidaiyyah',
+        'primary_batch_id': 8,
+        'batches': [
+          {'id': 3, 'name': 'Morning'},
+          {'id': 8, 'name': 'Noon', 'time': '12:00 PM - 01:00 PM'},
+        ],
+      });
+      expect(c.batchId, 8);
+      expect(c.primaryBatch?.name, 'Noon');
+      expect(c.primaryBatch?.schedule, '12:00 PM - 01:00 PM');
+    });
+
+    test('has no batch id when the student has no batch', () {
+      final c = EnrolledCourse.fromJson({'id': 4, 'name': 'X'});
+      expect(c.batchId, isNull);
+      expect(c.duration, isNull);
+    });
+
+    test('batch schedule combines days and time', () {
+      final b = CourseBatch.fromJson({
+        'id': 1,
+        'days': ['Saturday', 'Monday'],
+        'formatted_time': '06:00 PM - 07:30 PM',
+      });
+      expect(b.schedule, 'Saturday, Monday · 06:00 PM - 07:30 PM');
+    });
   });
 }

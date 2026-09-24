@@ -19,24 +19,29 @@ class FakeApiClient extends ApiClient {
     CancelToken? cancelToken,
   }) async {
     if (path.contains('tab=details')) {
+      // Shape of `GET /api/student/courses/{batch}?tab=details` (Sep 2026).
       return {
-        'batch': {
-          'id': 1,
-          'name': 'Nurani - Evening Batch',
-          'schedule': 'Saturday, Monday, Wednesday · 06:00 PM - 07:30 PM',
-          'teacher': {'name': 'Qari Mahmood Al-Hussary'},
-          'duration': '6 months',
-        },
+        'tab': 'details',
         'course': {
           'id': 1,
           'name': 'Nurani',
+          'duration': 6,
+          'duration_type': 'months',
+        },
+        'selected_batch': {
+          'id': 1,
+          'name': 'Nurani - Evening Batch',
+          'course_id': 1,
+          'days': ['Saturday', 'Monday', 'Wednesday'],
+          'formatted_time': '06:00 PM - 07:30 PM',
+          'teacher': {'id': 2, 'name': 'Qari Mahmood Al-Hussary'},
         },
         'summary': {
-          'pending_homework': '0',
-          'upcoming_classes': '2',
-          'recordings': '2',
-          'attendance_percentage': '0%',
-          'total_sessions': '0',
+          'pending_homework': 0,
+          'upcoming_classes': 1,
+          'recordings': 2,
+          'attendance_total': 0,
+          'attendance_rate': 0,
         },
       };
     }
@@ -44,26 +49,36 @@ class FakeApiClient extends ApiClient {
       if (path.contains('/999')) {
         return {'data': []};
       }
+      // Join link and password sit on `meetings[]`, not the class.
       return {
-        'classes': {
+        'online_classes': {
           'current_page': 1,
-          'data': {
-            'Upcoming Class': [
-              {
-                'id': 101,
-                'topic': 'Tajweed Rules & Practice',
-                'start_time': '2026-09-25 18:00:00',
-                'start_date_format': '25-09-2026 at 06:00 PM',
-                'password': 'secret_password_123',
-                'status': 'Upcoming',
-                'join_url': 'https://zoom.us/j/1234567890',
-                'course': {'name': 'Nurani'},
-                'teacher': {'name': 'Qari Mahmood Al-Hussary'},
-                'description': 'Interactive recitation review and Tajweed rule clarification.'
-              }
-            ]
-          }
-        }
+          'data': [
+            {
+              'id': 101,
+              'topic': 'Tajweed Rules & Practice',
+              'status': 'upcoming',
+              'class_status': 'Upcoming',
+              'start_time': '2026-09-25T18:00:00+00:00',
+              'start_time_formatted': '25-09-2026 06:00 PM',
+              'course': {'id': 1, 'name': 'Nurani'},
+              'batch': {'id': 1, 'name': 'Nurani - Evening Batch'},
+              'teacher': {'id': 2, 'name': 'Qari Mahmood Al-Hussary'},
+              'description':
+                  'Interactive recitation review and Tajweed rule clarification.',
+              'meetings': [
+                {
+                  'id': 1,
+                  'part_number': 1,
+                  'password': 'secret_password_123',
+                  'join_url': 'https://zoom.us/j/1234567890',
+                },
+              ],
+            },
+          ],
+          'last_page': 1,
+          'total': 1,
+        },
       };
     }
     if (path.contains('tab=assignments')) {
@@ -152,13 +167,10 @@ void main() {
           ChangeNotifierProvider<ClassProvider>.value(value: provider),
         ],
         child: const MaterialApp(
+          // Header info comes from the details response, not arguments.
           home: CourseDetailScreen(
             batchId: 1,
             courseTitle: 'Nurani',
-            batchName: 'Nurani - Evening Batch',
-            schedule: 'Saturday, Monday, Wednesday · 06:00 PM - 07:30 PM',
-            teacherName: 'Qari Mahmood Al-Hussary',
-            duration: '6 months',
           ),
         ),
       ),
@@ -226,7 +238,7 @@ void main() {
     expect(find.text('Upcoming'), findsOneWidget);
     expect(find.text('secret_password_123'), findsOneWidget);
     expect(find.text('Join Live Class'), findsOneWidget);
-    expect(find.text('25-09-2026 at 06:00 PM'), findsOneWidget);
+    expect(find.text('25-09-2026 06:00 PM'), findsOneWidget);
   });
 
   testWidgets('CourseDetailScreen displays Homework tab with matching HomeworkTab UI', (tester) async {
@@ -308,10 +320,12 @@ void main() {
     expect(find.text('YouTube'), findsOneWidget);
   });
 
-  testWidgets('CourseDetailScreen falls back to ClassProvider.liveSessions if courseTab is empty', (tester) async {
+  testWidgets('an empty course tab shows its empty state, not other courses', (tester) async {
     final fakeClient = FakeApiClient();
     final repo = ClassRepository(fakeClient);
     final provider = ClassProvider(repo);
+    // Other courses do have live classes app-wide…
+    await provider.loadLiveSessions();
 
     await tester.pumpWidget(
       MultiProvider(
@@ -320,26 +334,18 @@ void main() {
         ],
         child: const MaterialApp(
           home: CourseDetailScreen(
-            batchId: 999, // Unknown batch where courseTab returns empty
+            batchId: 999, // …but this batch's tab is empty.
             courseTitle: 'Nurani',
-            batchName: 'Nurani - Evening Batch',
           ),
         ),
       ),
     );
 
     await tester.pumpAndSettle();
-
-    // Tap on Live Classes tab
     await tester.tap(find.text('Live Classes'));
     await tester.pumpAndSettle();
 
-    // With batchId: 999, tab=online-class returns {'data': []},
-    // and live-classes returns Fallback Live Session
-    expect(find.text('Fallback Live Session'), findsOneWidget);
-    expect(find.text('LV'), findsOneWidget);
-    expect(find.text('Live'), findsOneWidget);
-    expect(find.text('fallback_pass'), findsOneWidget);
-    expect(find.text('Join Live Class'), findsOneWidget);
+    expect(find.text('No live classes scheduled'), findsOneWidget);
+    expect(find.text('Fallback Live Session'), findsNothing);
   });
 }

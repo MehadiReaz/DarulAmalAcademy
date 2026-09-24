@@ -30,6 +30,13 @@ class Fmt {
     return '$hour12:$minute $suffix';
   }
 
+  /// Device-local clock time of an instant, e.g. "4:32 AM".
+  static String clock(DateTime? d) {
+    if (d == null) return '--';
+    final l = d.toLocal();
+    return time('${l.hour}:${l.minute}');
+  }
+
   /// "21:00:00" + "22:00:00" -> "9:00 PM – 10:00 PM"
   static String timeRange(String? start, String? end) {
     if (end == null || end.trim().isEmpty) return time(start);
@@ -51,7 +58,7 @@ class Fmt {
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 
-  /// Relative-ish label for ticket lists.
+  /// Relative-ish label, e.g. `5m ago`.
   static String ago(DateTime? d) {
     if (d == null) return '';
     final diff = DateTime.now().difference(d);

@@ -43,6 +43,8 @@ dependencies:
   chewie: ^1.8.5
   webview_flutter_android: ^4.3.0
   webview_flutter_wkwebview: ^3.18.0
+  geolocator: ^14.0.2
+  timezone: ^0.11.1
 
 dependency_overrides:
   record_platform_interface: 1.2.0

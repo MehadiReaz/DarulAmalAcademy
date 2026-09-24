@@ -16,6 +16,7 @@ import '../../../providers/base_provider.dart';
 import '../../../providers/homework_provider.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
+import '../../../core/utils/responsive.dart';
 
 enum AudioRecordState { idle, recording, reviewing }
 
@@ -340,7 +341,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
         centerTitle: false,
         iconTheme: const IconThemeData(color: AppColors.cream),
       ),
-      body: _buildContent(provider),
+      body: ResponsiveBody(child: _buildContent(provider)),
     );
   }
 

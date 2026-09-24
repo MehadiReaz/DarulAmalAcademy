@@ -11,6 +11,7 @@ import '../../widgets/state_views.dart';
 import 'payment_success_screen.dart';
 import 'payment_webview_screen.dart';
 import 'receipt_viewer_screen.dart';
+import '../../../core/utils/responsive.dart';
 
 /// Fees, backed by `/student/fees/dues`, `/history`, `/pay/initiate`,
 /// `/pay/verify` and `/receipt/{id}`.
@@ -283,10 +284,10 @@ class _PayFeesScreenState extends State<PayFeesScreen>
           ),
         ),
       ),
-      body: TabBarView(
+      body: ResponsiveBody(child: TabBarView(
         controller: _tabs,
         children: [_duesTab(provider), _historyTab(provider)],
-      ),
+      )),
     );
   }
 
